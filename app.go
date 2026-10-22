@@ -2,20 +2,21 @@ package main
 
 import (
 	"context"
+	"sync"
 
 	auxiliaryfunc "filesearch-admin/internal/auxiliaryFunc"
+	"filesearch-admin/internal/update"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-// AppVersion — текущая версия программы. На этапе Nginx значение задаётся через
-// -ldflags "-X main.AppVersion=...".
-var AppVersion = "1.0.0"
 
 // App — методы, которые вызывает интерфейс.
 type App struct {
 	ctx    context.Context
 	logger *auxiliaryfunc.Logger
+
+	updateMu sync.Mutex
+	release  *update.Release
 }
 
 // NewApp создаёт приложение.
@@ -33,6 +34,8 @@ func (a *App) startup(ctx context.Context) {
 			runtime.EventsEmit(a.ctx, "journal:line", line)
 		})
 	}
+	update.CleanupOld()
+	go a.watchUpdates()
 }
 
 // shutdown закрывает журнал при выходе.
@@ -44,7 +47,7 @@ func (a *App) shutdown(ctx context.Context) {
 
 // Version возвращает текущую версию программы.
 func (a *App) Version() string {
-	return AppVersion
+	return update.CurrentVersion
 }
 
 // logLine пишет строку в файловый журнал и в интерфейс.
