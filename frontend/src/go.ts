@@ -16,6 +16,7 @@ export type RemoteTextDocument = constandstruct.RemoteTextDocument
 export type RemoteSaveResult = constandstruct.RemoteSaveResult
 export type SystemInfo = constandstruct.SystemInfo
 export type ApplicationMatch = constandstruct.ApplicationMatch
+export type MessageTemplate = constandstruct.MessageTemplate
 export type UpdateInfo = main.UpdateInfo
 
 // --- Методы бэкенда -----------------------------------------------------
