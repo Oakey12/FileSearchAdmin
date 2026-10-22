@@ -63,8 +63,9 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		OnStartup: app.startup,
-		Bind:      []any{app},
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
+		Bind:       []any{app},
 		Windows: &windows.Options{
 			Theme: theme,
 			CustomTheme: &windows.ThemeSettings{

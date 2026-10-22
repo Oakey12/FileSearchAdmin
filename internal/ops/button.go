@@ -23,6 +23,10 @@ var (
 	operationWaitGroup sync.WaitGroup
 )
 
+// runRemoteWithProgress — точка подмены для тестов: в бою вызывает реальный
+// транспорт через PowerShell/CIM, в тестах заменяется заглушкой.
+var runRemoteWithProgress = remotefunc.RunRemoteWithProgress
+
 func beginOperation(parent context.Context, logLine func(string)) (context.Context, bool) {
 	operationStateMu.Lock()
 	defer operationStateMu.Unlock()
@@ -294,7 +298,7 @@ func Search(ctx context.Context, targets []constandstruct.Server,
 			logLine(fmt.Sprintf("=== Поиск на %s (%s) ===", target.Name, target.IP))
 			serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.ServerTimeout)
 			finishStatus := startRemoteStatus(target, constandstruct.ServerTimeout, logLine)
-			lines, err := remotefunc.RunRemoteWithProgress(serverCtx, target.IP, user, password, "findfast", constandstruct.TargetProcessNames, "", remoteProgressLogger(target, logLine))
+			lines, err := runRemoteWithProgress(serverCtx, target.IP, user, password, "findfast", constandstruct.TargetProcessNames, "", remoteProgressLogger(target, logLine))
 			finishStatus(err)
 			stop()
 			if logCallError(operationCtx, target, err, logLine) {
@@ -349,7 +353,7 @@ func FinishProcess(
 			logLine(fmt.Sprintf("=== Завершение всех 1cv7s.exe на %s (%s) ===", target.Name, target.IP))
 			serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.MutationServerTimeout)
 			finishStatus := startRemoteStatus(target, constandstruct.MutationServerTimeout, logLine)
-			lines, err := remotefunc.RunRemoteWithProgress(serverCtx, target.IP, user, password, "kill", constandstruct.TargetProcessNames, "", remoteProgressLogger(target, logLine))
+			lines, err := runRemoteWithProgress(serverCtx, target.IP, user, password, "kill", constandstruct.TargetProcessNames, "", remoteProgressLogger(target, logLine))
 			finishStatus(err)
 			stop()
 			if logCallError(operationCtx, target, err, logLine) {
@@ -412,7 +416,7 @@ func Notify(ctx context.Context, targets []constandstruct.Server,
 			logLine(fmt.Sprintf("=== Оповещение на %s (%s) ===", target.Name, target.IP))
 			serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.MutationServerTimeout)
 			finishStatus := startRemoteStatus(target, constandstruct.MutationServerTimeout, logLine)
-			lines, err := remotefunc.RunRemoteWithProgress(serverCtx, target.IP, user, password, "notify", "", message, remoteProgressLogger(target, logLine))
+			lines, err := runRemoteWithProgress(serverCtx, target.IP, user, password, "notify", "", message, remoteProgressLogger(target, logLine))
 			finishStatus(err)
 			stop()
 			if logCallError(operationCtx, target, err, logLine) {
@@ -497,7 +501,7 @@ func ScanEmployees(
 			logLine(fmt.Sprintf("=== Сканирование сотрудников на %s (%s) ===", target.Name, target.IP))
 			serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.ServerTimeout)
 			finishStatus := startRemoteStatus(target, constandstruct.ServerTimeout, logLine)
-			lines, err := remotefunc.RunRemoteWithProgress(serverCtx, target.IP, user, password, "find", constandstruct.TargetProcessNames, "", remoteProgressLogger(target, logLine))
+			lines, err := runRemoteWithProgress(serverCtx, target.IP, user, password, "find", constandstruct.TargetProcessNames, "", remoteProgressLogger(target, logLine))
 			finishStatus(err)
 			stop()
 			if logCallError(operationCtx, target, err, logLine) {
