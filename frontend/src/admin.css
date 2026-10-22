@@ -1,0 +1,200 @@
+/* Стили интерфейса администрирования. Токены цветов и часть компонентов
+   (.btn, .sheet, .toast, .tool-btn, .theme-btn, .bd-menu, .spinner) берутся
+   из style.css. Здесь — раскладка, карточка подключения, вкладки и журнал. */
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.admin {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Шапка --- */
+.adm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--hair);
+  flex: 0 0 auto;
+}
+.adm-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.adm-brand-icon { width: 24px; height: 24px; color: var(--accent); flex: 0 0 auto; }
+.adm-title { margin: 0; font: 600 16px/1.2 var(--font-display); letter-spacing: -0.01em; }
+.adm-sub { margin: 2px 0 0; font-size: 11px; color: var(--text-3); }
+.adm-header-actions { display: flex; align-items: center; gap: 8px; position: relative; }
+
+/* --- Тело: работа слева, журнал справа --- */
+.adm-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 34%, 460px);
+}
+.adm-work {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+@media (max-width: 920px) {
+  .adm-body { grid-template-columns: 1fr; grid-template-rows: 1fr minmax(160px, 34%); }
+}
+
+/* --- Панели/карточки --- */
+.conn, .panel-card, .adm-journal {
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+}
+.conn { padding: 14px 16px; display: grid; gap: 14px; }
+.conn-grid { display: grid; gap: 14px; grid-template-columns: 1.4fr 1fr; }
+@media (max-width: 760px) { .conn-grid { grid-template-columns: 1fr; } }
+
+.field { display: grid; gap: 6px; min-width: 0; }
+.field > label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+.field-row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 620px) { .field-row { grid-template-columns: 1fr; } }
+
+/* --- Поля ввода --- */
+.inp, .conn textarea, .conn input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--hair-strong);
+  border-radius: 8px;
+  background: var(--fill-04);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+textarea.inp { height: auto; padding: 8px 10px; resize: vertical; min-height: 120px; font: 13px/1.5 var(--font-mono); }
+.inp::placeholder { color: var(--text-3); }
+.inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* --- Список серверов (галочки) --- */
+.servers {
+  max-height: 168px;
+  overflow-y: auto;
+  border: 1px solid var(--hair-strong);
+  border-radius: 8px;
+  background: var(--fill-025);
+  padding: 4px;
+}
+.server-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.server-row:hover { background: var(--fill-05); }
+.server-row input { width: 15px; height: 15px; accent-color: var(--accent); flex: 0 0 auto; margin: 0; }
+.server-row .srv-name { font-weight: 500; }
+.server-row .srv-ip { color: var(--text-3); font-family: var(--font-mono); font-size: 12px; margin-left: auto; }
+.servers-empty { padding: 14px; color: var(--text-3); text-align: center; font-size: 13px; }
+
+/* --- Вкладки --- */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--hair); padding-bottom: 0; }
+.tab {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 14px;
+  border: none; background: none;
+  color: var(--text-2); font: inherit; font-weight: 500;
+  border-bottom: 2px solid transparent;
+  cursor: pointer; white-space: nowrap;
+}
+.tab svg { width: 15px; height: 15px; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+
+.tab-panels { display: block; }
+.tab-panel { display: grid; gap: 14px; }
+.panel-card { padding: 14px 16px; display: grid; gap: 12px; }
+.panel-card h2 { margin: 0; font: 600 13px/1.2 var(--font); color: var(--text); }
+.panel-card .hint { font-size: 12px; color: var(--text-3); margin: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* --- Кнопки-варианты --- */
+.btn-danger { border-color: transparent; background: var(--alert); color: #fff; }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn-block { width: 100%; justify-content: center; }
+.btn-lg { height: 34px; padding: 0 18px; }
+
+/* сегментный переключатель режима */
+.seg { display: inline-flex; padding: 3px; gap: 3px; background: var(--fill-05); border-radius: 9px; border: 1px solid var(--hair); }
+.seg button {
+  border: none; background: none; color: var(--text-2);
+  padding: 5px 12px; border-radius: 6px; font: inherit; font-weight: 500; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--text); }
+
+/* --- Журнал --- */
+.adm-journal {
+  margin: 16px 18px 16px 0;
+  border-radius: 14px;
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+@media (max-width: 920px) { .adm-journal { margin: 0 18px 16px; } }
+.journal-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hair);
+  flex: 0 0 auto;
+}
+.journal-title { font-weight: 600; font-size: 13px; }
+.journal-actions { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.journal-log {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  padding: 10px 12px;
+  font: 12.5px/1.5 var(--font-mono);
+  color: var(--text-2);
+  white-space: pre-wrap; word-break: break-word;
+}
+.journal-line { padding: 1px 0; }
+.journal-line.jl-head { color: var(--text); font-weight: 600; margin-top: 6px; }
+.journal-line.jl-error { color: var(--alert); }
+.journal-line.jl-ok { color: var(--accent-text); }
+.journal-empty { color: var(--text-3); }
+
+/* --- Таблицы результатов (сканер, система) --- */
+.result-list { display: grid; gap: 2px; max-height: 320px; overflow-y: auto; }
+.result-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.result-row:hover { background: var(--fill-05); }
+.result-row.selected { background: var(--accent-soft); border-color: var(--accent); }
+.result-row input[type=radio], .result-row input[type=checkbox] { accent-color: var(--accent); margin: 0; }
+.result-main { min-width: 0; }
+.result-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-meta { font-size: 12px; color: var(--text-3); }
+
+.kv { display: grid; grid-template-columns: minmax(120px, 220px) 1fr; gap: 4px 16px; font-size: 13px; }
+.kv dt { color: var(--text-3); }
+.kv dd { margin: 0; color: var(--text); word-break: break-word; }
+
+.btn-danger:disabled { opacity: 0.5; }
+.danger-text { color: var(--alert); }

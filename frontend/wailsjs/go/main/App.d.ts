@@ -23,7 +23,9 @@ export function IsBusy():Promise<boolean>;
 
 export function Notify(arg1:Array<constandstruct.Server>,arg2:string,arg3:string,arg4:string):Promise<void>;
 
-export function PickScriptFile():Promise<string>;
+export function NotifyTemplates():Promise<Array<constandstruct.MessageTemplate>>;
+
+export function PickAndReadScript():Promise<main.ScriptFile>;
 
 export function ReadRemoteFile(arg1:string,arg2:string,arg3:string,arg4:constandstruct.RemoteFile):Promise<constandstruct.RemoteTextDocument>;
 

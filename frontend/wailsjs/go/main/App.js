@@ -42,8 +42,12 @@ export function Notify(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Notify'](arg1, arg2, arg3, arg4);
 }
 
-export function PickScriptFile() {
-  return window['go']['main']['App']['PickScriptFile']();
+export function NotifyTemplates() {
+  return window['go']['main']['App']['NotifyTemplates']();
+}
+
+export function PickAndReadScript() {
+  return window['go']['main']['App']['PickAndReadScript']();
 }
 
 export function ReadRemoteFile(arg1, arg2, arg3, arg4) {

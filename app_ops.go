@@ -33,6 +33,11 @@ func (a *App) IsBusy() bool {
 	return ops.IsOperationRunning()
 }
 
+// NotifyTemplates возвращает готовые шаблоны оповещений.
+func (a *App) NotifyTemplates() []constandstruct.MessageTemplate {
+	return constandstruct.MessageTemplates
+}
+
 // CancelOperation запрашивает отмену текущей операции.
 func (a *App) CancelOperation() {
 	ops.CancelCurrentOperation(a.logLine)
@@ -260,13 +265,3 @@ func (a *App) FormatSystemInfo(info constandstruct.SystemInfo) [][2]string {
 	return ops.FormatSystemInfo(info)
 }
 
-// PickScriptFile открывает диалог выбора .ps1-файла. Пустая строка — отмена.
-func (a *App) PickScriptFile() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Выберите сценарий PowerShell",
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Сценарий PowerShell (*.ps1)", Pattern: "*.ps1"},
-			{DisplayName: "Все файлы", Pattern: "*.*"},
-		},
-	})
-}

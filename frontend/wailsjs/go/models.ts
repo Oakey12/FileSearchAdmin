@@ -68,6 +68,20 @@ export namespace constandstruct {
 	        this.UninstallDescription = source["UninstallDescription"];
 	    }
 	}
+	export class MessageTemplate {
+	    Name: string;
+	    Text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MessageTemplate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Name = source["Name"];
+	        this.Text = source["Text"];
+	    }
+	}
 	export class RemoteFile {
 	    Name: string;
 	    FullPath: string;
@@ -287,6 +301,20 @@ export namespace constandstruct {
 
 export namespace main {
 	
+	export class ScriptFile {
+	    name: string;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ScriptFile(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.text = source["text"];
+	    }
+	}
 	export class UpdateInfo {
 	    available: boolean;
 	    current: string;
