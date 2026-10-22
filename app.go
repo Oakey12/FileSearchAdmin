@@ -17,6 +17,9 @@ type App struct {
 
 	updateMu sync.Mutex
 	release  *update.Release
+
+	// onStatus — точка подмены для тестов; в бою nil и статус уходит событием.
+	onStatus func(bool)
 }
 
 // NewApp создаёт приложение.
@@ -71,6 +74,10 @@ func (a *App) outputLine(line string) {
 
 // emitStatus сообщает интерфейсу, идёт ли сейчас операция.
 func (a *App) emitStatus(running bool) {
+	if a.onStatus != nil {
+		a.onStatus(running)
+		return
+	}
 	runtime.EventsEmit(a.ctx, "operation:status", operationStatus{Running: running})
 }
 
