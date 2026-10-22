@@ -1,13 +1,13 @@
-// Вкладка «Завершение 1С»: поиск и завершение 1cv7s, список сотрудников и
-// оповещение пользователей.
+// Категория «Процессы 1С»: поиск и завершение 1cv7s, список сотрудников с
+// открытой 1С и завершение у выбранных.
 
-import { Go, onEmployees, type EmployeeProcess, type MessageTemplate } from './go'
+import { Go, onEmployees, type EmployeeProcess } from './go'
 import { clear, el } from './dom'
 import { confirmAction } from './confirm'
-import { toast } from './toast'
+import { categoryHeader, card, actions, button } from './ui'
 import type { Creds } from './creds'
 
-export class MainTab {
+export class ProcessesPanel {
   private employees: EmployeeProcess[] = []
   private selected = new Set<number>()
   private listEl!: HTMLElement
@@ -20,24 +20,22 @@ export class MainTab {
 
   private build(): void {
     clear(this.root)
+    this.root.append(categoryHeader('i-gear', 'Процессы 1С', 'Поиск и завершение сеансов 1cv7s на выбранных серверах.'))
 
-    // --- Процессы ---
-    const proc = el('section', { class: 'panel-card' })
-    proc.append(el('h2', { text: 'Процессы 1cv7s' }))
-    proc.append(el('p', { class: 'hint', text: 'Действия применяются к выбранным серверам (или к ручному IP).' }))
-    const searchBtn = el('button', { class: 'btn', type: 'button', text: 'Найти открытые 1cv7s' })
+    // процессы
+    const proc = card('Все процессы на серверах', 'Действия применяются к выбранным серверам или к ручному IP.')
+    const searchBtn = button('Найти открытые 1cv7s')
     searchBtn.addEventListener('click', () => {
       const targets = this.creds.requireTargets()
       if (targets) Go.SearchProcesses(targets, this.creds.login, this.creds.password)
     })
-    const finishAllBtn = el('button', { class: 'btn btn-danger', type: 'button', text: 'Завершить 1cv7s у всех на выбранных серверах' })
+    const finishAllBtn = button('Завершить 1cv7s у всех', 'danger')
     finishAllBtn.addEventListener('click', () => this.finishAll())
-    proc.append(el('div', { class: 'actions' }, [searchBtn, finishAllBtn]))
+    proc.append(actions(searchBtn, finishAllBtn))
 
-    // --- Сотрудники ---
-    const emp = el('section', { class: 'panel-card' })
-    emp.append(el('h2', { text: 'Сотрудники с открытой 1С' }))
-    const scanBtn = el('button', { class: 'btn', type: 'button', text: 'Сканировать сотрудников' })
+    // сотрудники
+    const emp = card('Сотрудники с открытой 1С', 'Просканируйте, отметьте сотрудников и завершите у них 1С.')
+    const scanBtn = button('Сканировать сотрудников')
     scanBtn.addEventListener('click', () => {
       const targets = this.creds.requireTargets()
       if (targets) {
@@ -45,57 +43,15 @@ export class MainTab {
         Go.ScanEmployees(targets, this.creds.login, this.creds.password)
       }
     })
-    this.finishSelectedBtn = el('button', { class: 'btn btn-danger', type: 'button', text: 'Завершить 1С у выбранных' }) as HTMLButtonElement
+    this.finishSelectedBtn = button('Завершить 1С у выбранных', 'danger')
     this.finishSelectedBtn.disabled = true
     this.finishSelectedBtn.addEventListener('click', () => this.finishSelected())
-    emp.append(el('div', { class: 'actions' }, [scanBtn, this.finishSelectedBtn]))
+    emp.append(actions(scanBtn, this.finishSelectedBtn))
     this.listEl = el('div', { class: 'result-list' })
     this.listEl.append(el('p', { class: 'hint', text: 'Список появится после сканирования.' }))
     emp.append(this.listEl)
 
-    // --- Оповещение ---
-    const notify = el('section', { class: 'panel-card' })
-    notify.append(el('h2', { text: 'Оповещение пользователей' }))
-    const select = el('select', { class: 'inp' }) as HTMLSelectElement
-    select.append(el('option', { value: '', text: 'Выберите шаблон…' }))
-    const textarea = el('textarea', { class: 'inp', placeholder: 'Текст оповещения…', rows: 3 }) as HTMLTextAreaElement
-    textarea.style.minHeight = '72px'
-    void this.loadTemplates(select, textarea)
-    select.addEventListener('change', () => {
-      if (select.value) textarea.value = select.value
-    })
-    const notifyBtn = el('button', { class: 'btn btn-primary', type: 'button', text: 'Оповестить' })
-    notifyBtn.addEventListener('click', () => {
-      const targets = this.creds.requireTargets()
-      const message = textarea.value.trim()
-      if (!targets) return
-      if (!message) {
-        toast('Введите текст оповещения.')
-        return
-      }
-      Go.Notify(targets, this.creds.login, this.creds.password, message)
-    })
-    notify.append(
-      el('div', { class: 'field' }, [select]),
-      el('div', { class: 'field' }, [textarea]),
-      el('div', { class: 'actions' }, [notifyBtn]),
-    )
-
-    this.root.append(proc, emp, notify)
-  }
-
-  private async loadTemplates(select: HTMLSelectElement, textarea: HTMLTextAreaElement): Promise<void> {
-    let templates: MessageTemplate[] = []
-    try {
-      templates = await Go.NotifyTemplates()
-    } catch {
-      return
-    }
-    for (const template of templates) {
-      const option = el('option', { value: template.Text, text: template.Name }) as HTMLOptionElement
-      select.append(option)
-    }
-    void textarea
+    this.root.append(proc, emp)
   }
 
   private async finishAll(): Promise<void> {
