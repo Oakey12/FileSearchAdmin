@@ -4,12 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Удалённое управление 1С</title>
-  <!-- Светлая тема до первой отрисовки, чтобы окно не мигало тёмным. Ключ — THEME_KEY в theme.ts. -->
   <script>try { if (localStorage.getItem('theme') === 'light' && localStorage.getItem('backdrop') !== 'forest') document.documentElement.dataset.theme = 'light' } catch (e) {}</script>
-  <!-- Фон до отрисовки: от него зависит прозрачность панелей. Ключ — BACKDROP_KEY в backdrop.ts. -->
   <script>try { var b = localStorage.getItem('backdrop'); if (b === 'particles' || b === 'forest') document.documentElement.dataset.backdrop = b } catch (e) {}</script>
-  <script type="module" crossorigin src="/assets/index-BxFnQjZv.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-D8YD5W1Z.css">
+  <script type="module" crossorigin src="/assets/index-CLBGYI1m.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Bf8P0TdZ.css">
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -20,11 +18,14 @@
     <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.75 4.25h10.5M6.25 4V2.75h3.5V4M4 4.25l.6 8.6a1.3 1.3 0 0 0 1.3 1.2h4.2a1.3 1.3 0 0 0 1.3-1.2l.6-8.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.25" y="5.25" width="8.5" height="8.5" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 3.2V3.5A1.25 1.25 0 0 0 9.25 2.25h-5.5A1.5 1.5 0 0 0 2.25 3.75v5.5A1.25 1.25 0 0 0 3.5 10.5h.25" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
     <symbol id="i-sun" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.9" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.6v1.5M8 12.9v1.5M1.6 8h1.5M12.9 8h1.5M3.5 3.5l1 1M11.5 11.5l1 1M3.5 12.5l1-1M11.5 4.5l1-1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.4 9.9A5.9 5.9 0 0 1 6.1 2.6a5.9 5.9 0 1 0 7.3 7.3Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
     <symbol id="i-sparkle" viewBox="0 0 16 16"><path d="M6.5 2.5 7.6 5.9a1 1 0 0 0 .6.6l3.4 1.1-3.4 1.1a1 1 0 0 0-.6.6L6.5 12.7 5.4 9.3a1 1 0 0 0-.6-.6L1.4 7.6l3.4-1.1a1 1 0 0 0 .6-.6Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M12.2 1.8v2.6M10.9 3.1h2.6M12.4 10.6v2.2M11.3 11.7h2.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
     <symbol id="i-bell" viewBox="0 0 16 16"><path d="M8 1.75a3.75 3.75 0 0 0-3.75 3.75c0 3-1.25 4-1.25 4h10s-1.25-1-1.25-4A3.75 3.75 0 0 0 8 1.75Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M6.5 12.5a1.5 1.5 0 0 0 3 0" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
-    <symbol id="i-terminal" viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="m4.5 6 2 2-2 2M8.5 10.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-    <symbol id="i-scan" viewBox="0 0 16 16"><path d="M2.75 5V3.25A.5.5 0 0 1 3.25 2.75H5M11 2.75h1.75a.5.5 0 0 1 .5.5V5M13.25 11v1.75a.5.5 0 0 1-.5.5H11M5 13.25H3.25a.5.5 0 0 1-.5-.5V11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M2.75 8h10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
-    <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M1.5 8h1.6M12.9 8h1.6M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5-7-4.5Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-box" viewBox="0 0 16 16"><path d="M8 1.75 2.25 4.5v7L8 14.25 13.75 11.5v-7L8 1.75Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.4 4.6 8 7.3l5.6-2.7M8 7.3v6.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+    <symbol id="i-file" viewBox="0 0 16 16"><path d="M4 1.75h5L12.25 5v8.25a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M8.75 1.9V4.5a.9.9 0 0 0 .9.9h2.4M5.5 8.5h5M5.5 11h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+    <symbol id="i-monitor" viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="8" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M6 13.25h4M8 10.75v2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
   </svg>
 
   <div class="backdrop" aria-hidden="true">
@@ -40,17 +41,16 @@
   <div class="admin" id="app">
     <header class="adm-header">
       <div class="adm-brand">
-        <svg class="adm-brand-icon"><use href="#i-terminal"/></svg>
+        <svg class="adm-brand-icon"><use href="#i-gear"/></svg>
         <div>
           <h1 class="adm-title">Удалённое управление 1С</h1>
           <p class="adm-sub" id="version"></p>
         </div>
       </div>
       <div class="adm-header-actions">
-        <button class="update-btn" id="update" type="button" hidden>Обновить</button>
-        <span class="update-dot" id="updateDot" hidden title="Есть новая версия"></span>
-        <button class="theme-btn bd-btn" id="backdropButton" type="button" title="Фон окна" aria-label="Фон окна" aria-haspopup="dialog" aria-expanded="false" aria-controls="backdropMenu"><svg><use href="#i-sparkle"/></svg></button>
-        <button class="theme-btn" id="themeToggle" type="button" title="Светлая тема" aria-label="Светлая тема" aria-pressed="false"><svg><use href="#i-sun"/></svg></button>
+        <button class="pill-btn update-pill" id="update" type="button" hidden><span class="update-dot" id="updateDot"></span>Обновить</button>
+        <button class="pill-btn" id="backdropButton" type="button" title="Фон окна" aria-label="Фон окна" aria-haspopup="dialog" aria-expanded="false" aria-controls="backdropMenu"><svg><use href="#i-sparkle"/></svg></button>
+        <button class="pill-btn" id="themeToggle" type="button" title="Светлая тема" aria-label="Светлая тема" aria-pressed="false"><svg class="ic-sun"><use href="#i-sun"/></svg><svg class="ic-moon"><use href="#i-moon"/></svg></button>
         <div class="bd-menu" id="backdropMenu" role="dialog" aria-label="Фон окна" hidden>
           <p class="bd-menu-title">Фон окна</p>
           <div class="bd-options" role="radiogroup" aria-label="Фон окна">
@@ -63,19 +63,30 @@
     </header>
 
     <div class="adm-body">
-      <section class="adm-work">
-        <div class="conn" id="conn"></div>
-        <nav class="tabs" id="tabs" role="tablist" aria-label="Разделы">
-          <button class="tab" role="tab" data-tab="main" aria-selected="true"><svg><use href="#i-bell"/></svg>Завершение 1С</button>
-          <button class="tab" role="tab" data-tab="commands" aria-selected="false"><svg><use href="#i-terminal"/></svg>Команды</button>
-          <button class="tab" role="tab" data-tab="scanner" aria-selected="false"><svg><use href="#i-scan"/></svg>Сканер и удаление</button>
+      <aside class="side" aria-label="Категории">
+        <nav class="side-nav" id="sideNav" role="tablist" aria-orientation="vertical">
+          <p class="side-group-title">Управление 1С</p>
+          <button class="side-item" role="tab" data-cat="processes" aria-selected="true"><svg><use href="#i-gear"/></svg><span>Процессы 1С</span></button>
+          <button class="side-item" role="tab" data-cat="notify" aria-selected="false"><svg><use href="#i-bell"/></svg><span>Оповещения</span></button>
+          <button class="side-item" role="tab" data-cat="commands" aria-selected="false"><svg><use href="#i-play"/></svg><span>Команды</span></button>
+          <p class="side-group-title">Обслуживание</p>
+          <button class="side-item" role="tab" data-cat="programs" aria-selected="false"><svg><use href="#i-box"/></svg><span>Программы</span></button>
+          <button class="side-item" role="tab" data-cat="files" aria-selected="false"><svg><use href="#i-file"/></svg><span>Файлы</span></button>
+          <button class="side-item" role="tab" data-cat="system" aria-selected="false"><svg><use href="#i-monitor"/></svg><span>О системе</span></button>
         </nav>
-        <div class="tab-panels" id="tabPanels">
-          <section class="tab-panel" data-panel="main" role="tabpanel"></section>
-          <section class="tab-panel" data-panel="commands" role="tabpanel" hidden></section>
-          <section class="tab-panel" data-panel="scanner" role="tabpanel" hidden></section>
+      </aside>
+
+      <main class="content">
+        <div class="conn" id="conn"></div>
+        <div class="cat-host" id="catHost">
+          <section class="cat" data-cat="processes" role="tabpanel"></section>
+          <section class="cat" data-cat="notify" role="tabpanel" hidden></section>
+          <section class="cat" data-cat="commands" role="tabpanel" hidden></section>
+          <section class="cat" data-cat="programs" role="tabpanel" hidden></section>
+          <section class="cat" data-cat="files" role="tabpanel" hidden></section>
+          <section class="cat" data-cat="system" role="tabpanel" hidden></section>
         </div>
-      </section>
+      </main>
 
       <aside class="adm-journal" id="journal">
         <header class="journal-head">
@@ -83,8 +94,8 @@
           <span class="journal-title" id="jStatus">Журнал</span>
           <div class="journal-actions">
             <button class="link-btn" id="jCancel" type="button" hidden>Отменить</button>
-            <button class="tool-btn" id="jCopy" type="button" title="Копировать журнал"><svg><use href="#i-copy"/></svg></button>
-            <button class="tool-btn" id="jClear" type="button" title="Очистить"><svg><use href="#i-trash"/></svg></button>
+            <button class="icon-btn" id="jCopy" type="button" title="Копировать журнал"><svg><use href="#i-copy"/></svg></button>
+            <button class="icon-btn" id="jClear" type="button" title="Очистить"><svg><use href="#i-trash"/></svg></button>
           </div>
         </header>
         <div class="journal-log" id="jLog" role="log" aria-live="polite" tabindex="0"></div>

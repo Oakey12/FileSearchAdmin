@@ -1,15 +1,16 @@
-// Вкладка «Команды»: выполнение PowerShell на целевом компьютере или в сессии
+// Категория «Команды»: выполнение PowerShell на целевом компьютере или в сессии
 // выбранного пользователя.
 
 import { Go, type RemoteUser } from './go'
 import { clear, el } from './dom'
 import { confirmAction } from './confirm'
 import { toast } from './toast'
+import { categoryHeader, card, actions, button } from './ui'
 import type { Creds } from './creds'
 
 type Mode = 'machine' | 'session'
 
-export class CommandsTab {
+export class CommandsPanel {
   private mode: Mode = 'machine'
   private users: RemoteUser[] = []
   private selectedUser: RemoteUser | null = null
@@ -23,44 +24,37 @@ export class CommandsTab {
   }
 
   private build(): void {
-    clear(this.root)
+    this.root.append(categoryHeader('i-play', 'Команды', 'Запуск сценария PowerShell на компьютере или в сессии пользователя.'))
 
-    const card = el('section', { class: 'panel-card' })
-    card.append(el('h2', { text: 'Выполнение PowerShell' }))
-    card.append(el('p', { class: 'hint', text: 'Целевой компьютер берётся из поля «IP вручную» или первого выбранного сервера. Логин и пароль — из карточки подключения.' }))
+    const panel = card('Целевой компьютер и режим', 'Компьютер берётся из поля «IP вручную» или первого выбранного сервера.')
 
-    // режим
     const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Режим' })
     const machineBtn = el('button', { type: 'button', text: 'На компьютере', 'aria-pressed': 'true' })
     const sessionBtn = el('button', { type: 'button', text: 'В сессии пользователя', 'aria-pressed': 'false' })
     machineBtn.addEventListener('click', () => this.setMode('machine', machineBtn, sessionBtn))
     sessionBtn.addEventListener('click', () => this.setMode('session', machineBtn, sessionBtn))
     seg.append(machineBtn, sessionBtn)
-    card.append(seg)
+    panel.append(seg)
 
-    // блок выбора пользователя (для режима сессии)
     this.sessionBlock = el('div', { class: 'field' })
     this.sessionBlock.hidden = true
-    const scanUsersBtn = el('button', { class: 'btn', type: 'button', text: 'Сканировать пользователей' })
+    const scanUsersBtn = button('Сканировать пользователей')
     scanUsersBtn.addEventListener('click', () => this.scanUsers())
     this.userListEl = el('div', { class: 'result-list' })
-    this.sessionBlock.append(el('div', { class: 'actions' }, [scanUsersBtn]), this.userListEl)
-    card.append(this.sessionBlock)
+    this.sessionBlock.append(actions(scanUsersBtn), this.userListEl)
+    panel.append(this.sessionBlock)
 
-    // скрипт
-    this.script = el('textarea', { class: 'inp', placeholder: 'Введите команду PowerShell или прикрепите .ps1', spellcheck: false }) as HTMLTextAreaElement
+    const scriptCard = card('Сценарий', 'Введите команду или прикрепите .ps1 (UTF-8, UTF-8 BOM или UTF-16 с BOM).')
+    this.script = el('textarea', { class: 'inp', placeholder: 'Например: Get-Service | Where-Object Status -eq Running', spellcheck: false }) as HTMLTextAreaElement
+    this.script.style.minHeight = '140px'
     this.script.addEventListener('input', () => { this.attachedName = 'поле ввода' })
-    const attachBtn = el('button', { class: 'btn', type: 'button', text: 'Прикрепить .ps1…' })
+    const attachBtn = button('Прикрепить .ps1…')
     attachBtn.addEventListener('click', () => this.attach())
-    const runBtn = el('button', { class: 'btn btn-primary', type: 'button', text: 'Выполнить на целевом компьютере' })
+    const runBtn = button('Выполнить', 'primary')
     runBtn.addEventListener('click', () => this.run())
+    scriptCard.append(el('div', { class: 'field' }, [this.script]), actions(attachBtn, runBtn))
 
-    card.append(
-      el('div', { class: 'field' }, [this.script]),
-      el('div', { class: 'actions' }, [attachBtn, runBtn]),
-    )
-
-    this.root.append(card)
+    this.root.append(panel, scriptCard)
   }
 
   private setMode(mode: Mode, machineBtn: HTMLElement, sessionBtn: HTMLElement): void {
@@ -85,7 +79,7 @@ export class CommandsTab {
       this.userListEl.append(el('p', { class: 'hint', text: 'Активные пользователи не найдены.' }))
       return
     }
-    this.users.forEach((user, index) => {
+    for (const user of this.users) {
       const radio = el('input', { type: 'radio', name: 'cmd-user' }) as HTMLInputElement
       radio.addEventListener('change', () => {
         this.selectedUser = user
@@ -99,9 +93,8 @@ export class CommandsTab {
           el('div', { class: 'result-meta', text: `${user.Username} · сессия ${user.SessionID}` }),
         ]),
       ])
-      void index
       this.userListEl.append(row)
-    })
+    }
   }
 
   private async attach(): Promise<void> {

@@ -29,22 +29,33 @@ export interface OperationStatus {
   running: boolean
 }
 
+// safeOn подписывается на событие Wails. Вне Wails (предпросмотр в браузере)
+// runtime отсутствует — тогда возвращается пустая отписка, а интерфейс всё
+// равно отрисовывается.
+function safeOn(event: string, cb: (...data: unknown[]) => void): () => void {
+  try {
+    return EventsOn(event, cb)
+  } catch {
+    return () => {}
+  }
+}
+
 export function onJournalLine(cb: (line: string) => void): () => void {
-  return EventsOn('journal:line', (line: string) => cb(line))
+  return safeOn('journal:line', (line) => cb(line as string))
 }
 
 export function onOperationStatus(cb: (status: OperationStatus) => void): () => void {
-  return EventsOn('operation:status', (status: OperationStatus) => cb(status))
+  return safeOn('operation:status', (status) => cb(status as OperationStatus))
 }
 
 export function onEmployees(cb: (list: EmployeeProcess[]) => void): () => void {
-  return EventsOn('scan:employees', (list: EmployeeProcess[]) => cb(list ?? []))
+  return safeOn('scan:employees', (list) => cb((list as EmployeeProcess[]) ?? []))
 }
 
 export function onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void {
-  return EventsOn('update:available', (info: UpdateInfo) => cb(info))
+  return safeOn('update:available', (info) => cb(info as UpdateInfo))
 }
 
 export function onUpdateProgress(cb: (fraction: number) => void): () => void {
-  return EventsOn('update:progress', (fraction: number) => cb(fraction))
+  return safeOn('update:progress', (fraction) => cb(fraction as number))
 }

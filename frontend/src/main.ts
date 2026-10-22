@@ -27,16 +27,25 @@ import {
 import { byId } from './dom'
 import { Creds } from './creds'
 import { Journal } from './journal'
-import { MainTab } from './tab-main'
-import { CommandsTab } from './tab-commands'
-import { ScannerTab } from './tab-scanner'
+import { ProcessesPanel } from './cat-processes'
+import { NotifyPanel } from './cat-notify'
+import { CommandsPanel } from './cat-commands'
+import { ProgramsPanel } from './cat-programs'
+import { FilesPanel } from './cat-files'
+import { SystemPanel } from './cat-system'
 
 // --- Окно: цвет фона под выбранную тему --------------------------------
 function syncWindow(theme: Theme): void {
-  const [r, g, b] = WINDOW_BG[theme]
-  WindowSetBackgroundColour(r, g, b, 255)
-  if (theme === 'light') WindowSetLightTheme()
-  else WindowSetDarkTheme()
+  // Вне Wails (предпросмотр в обычном браузере) runtime недоступен — сбой
+  // синхронизации хрома окна не должен ронять интерфейс.
+  try {
+    const [r, g, b] = WINDOW_BG[theme]
+    WindowSetBackgroundColour(r, g, b, 255)
+    if (theme === 'light') WindowSetLightTheme()
+    else WindowSetDarkTheme()
+  } catch {
+    /* runtime окна недоступен */
+  }
 }
 
 // --- Фоны --------------------------------------------------------------
@@ -182,24 +191,28 @@ function setupUpdates(): void {
   })
 }
 
-// --- Вкладки -----------------------------------------------------------
-function setupTabs(creds: Creds): void {
-  const tabs = [...document.querySelectorAll<HTMLButtonElement>('.tab')]
+// --- Категории ---------------------------------------------------------
+function setupCategories(creds: Creds): void {
+  const items = [...document.querySelectorAll<HTMLButtonElement>('.side-item')]
   const panels = new Map<string, HTMLElement>()
-  for (const panel of document.querySelectorAll<HTMLElement>('.tab-panel')) {
-    panels.set(panel.dataset.panel ?? '', panel)
+  for (const panel of document.querySelectorAll<HTMLElement>('.cat')) {
+    panels.set(panel.dataset.cat ?? '', panel)
   }
 
-  new MainTab(panels.get('main')!, creds)
-  new CommandsTab(panels.get('commands')!, creds)
-  new ScannerTab(panels.get('scanner')!, creds)
+  // Панели строятся один раз, состояние сохраняется при переключении категорий.
+  new ProcessesPanel(panels.get('processes')!, creds)
+  new NotifyPanel(panels.get('notify')!, creds)
+  new CommandsPanel(panels.get('commands')!, creds)
+  new ProgramsPanel(panels.get('programs')!, creds)
+  new FilesPanel(panels.get('files')!, creds)
+  new SystemPanel(panels.get('system')!, creds)
 
   const select = (name: string): void => {
-    for (const tab of tabs) tab.setAttribute('aria-selected', String(tab.dataset.tab === name))
+    for (const item of items) item.setAttribute('aria-selected', String(item.dataset.cat === name))
     for (const [key, panel] of panels) panel.hidden = key !== name
   }
-  for (const tab of tabs) {
-    tab.addEventListener('click', () => select(tab.dataset.tab ?? 'main'))
+  for (const item of items) {
+    item.addEventListener('click', () => select(item.dataset.cat ?? 'processes'))
   }
 }
 
@@ -211,7 +224,7 @@ async function main(): Promise<void> {
 
   new Journal()
   const creds = new Creds()
-  setupTabs(creds)
+  setupCategories(creds)
 
   try {
     byId('version').textContent = `Версия ${await Go.Version()}`
