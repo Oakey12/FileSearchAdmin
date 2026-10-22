@@ -146,6 +146,17 @@ textarea.inp { height: auto; padding: 9px 11px; resize: vertical; min-height: 96
 .inp::placeholder { color: var(--text-3); }
 .inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
+/* --- Поле поиска --- */
+.search-box { position: relative; display: flex; align-items: center; }
+.search-icon { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--text-3); pointer-events: none; }
+.search-input {
+  width: 100%; box-sizing: border-box; height: 32px; padding: 0 10px 0 32px;
+  border: 1px solid var(--hair-strong); border-radius: 8px;
+  background: var(--fill-04); color: var(--text); font: inherit; outline: none;
+}
+.search-input::placeholder { color: var(--text-3); }
+.search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
 /* --- Свой выпадающий список --- */
 .dd { position: relative; }
 .dd-button {
