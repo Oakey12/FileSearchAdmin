@@ -27,6 +27,7 @@ import {
 import { byId } from './dom'
 import { Creds } from './creds'
 import { Journal } from './journal'
+import { setupJournalLayout } from './journal-layout'
 import { ProcessesPanel } from './cat-processes'
 import { NotifyPanel } from './cat-notify'
 import { CommandsPanel } from './cat-commands'
@@ -223,6 +224,7 @@ async function main(): Promise<void> {
   setupUpdates()
 
   new Journal()
+  setupJournalLayout()
   const creds = new Creds()
   setupCategories(creds)
 

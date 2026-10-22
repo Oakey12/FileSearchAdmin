@@ -8,6 +8,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 
 	constandstruct "filesearch-admin/internal/constAndStruct"
 	"filesearch-admin/internal/config"
@@ -36,6 +38,32 @@ func (a *App) IsBusy() bool {
 // NotifyTemplates возвращает готовые шаблоны оповещений.
 func (a *App) NotifyTemplates() []constandstruct.MessageTemplate {
 	return constandstruct.MessageTemplates
+}
+
+// ImportServers открывает диалог выбора JSON-файла со списком серверов, проверяет
+// его (тот же формат, что и у сервера обновлений: уникальные IP/DNS-имена) и
+// возвращает список. Пустой список (и nil-ошибка) — пользователь отменил выбор.
+func (a *App) ImportServers() ([]constandstruct.Server, error) {
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Выберите JSON со списком серверов",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "JSON (*.json)", Pattern: "*.json"},
+			{DisplayName: "Все файлы", Pattern: "*.*"},
+		},
+	})
+	if err != nil || path == "" {
+		return nil, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("не удалось прочитать файл: %w", err)
+	}
+	servers, err := config.ParseServers(data)
+	if err != nil {
+		return nil, err
+	}
+	a.logLine(fmt.Sprintf("Загружен список серверов из файла: %d.", len(servers)))
+	return servers, nil
 }
 
 // CancelOperation запрашивает отмену текущей операции.

@@ -17,6 +17,8 @@ export function FinishEmployees(arg1:Array<constandstruct.EmployeeProcess>,arg2:
 
 export function FormatSystemInfo(arg1:constandstruct.SystemInfo):Promise<Array<any>>;
 
+export function ImportServers():Promise<Array<constandstruct.Server>>;
+
 export function InstallUpdate():Promise<void>;
 
 export function IsBusy():Promise<boolean>;
