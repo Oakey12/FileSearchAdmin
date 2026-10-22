@@ -30,6 +30,10 @@ export function FormatSystemInfo(arg1) {
   return window['go']['main']['App']['FormatSystemInfo'](arg1);
 }
 
+export function ImportServers() {
+  return window['go']['main']['App']['ImportServers']();
+}
+
 export function InstallUpdate() {
   return window['go']['main']['App']['InstallUpdate']();
 }

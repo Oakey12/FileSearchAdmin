@@ -28,7 +28,9 @@ export class Creds {
 
     // Левая колонка — серверы + ручной IP
     const left = el('div', { class: 'field' })
-    left.append(el('label', { text: 'Серверы' }))
+    const importBtn = el('button', { class: 'link-btn', type: 'button', text: 'Загрузить JSON…', title: 'Загрузить список серверов из JSON-файла' })
+    importBtn.addEventListener('click', () => this.importServers())
+    left.append(el('div', { class: 'field-head' }, [el('label', { text: 'Серверы' }), importBtn]))
     this.listEl = el('div', { class: 'servers' })
     this.listEl.append(el('div', { class: 'servers-empty', text: 'Загрузка списка…' }))
     left.append(this.listEl)
@@ -78,6 +80,20 @@ export class Creds {
       this.servers = []
     }
     this.renderList()
+  }
+
+  private async importServers(): Promise<void> {
+    try {
+      const servers = await Go.ImportServers()
+      if (servers && servers.length > 0) {
+        this.servers = servers
+        this.selected.clear()
+        this.renderList()
+        toast(`Загружено серверов: ${servers.length}.`)
+      }
+    } catch (err) {
+      toast(String(err))
+    }
   }
 
   private renderList(): void {

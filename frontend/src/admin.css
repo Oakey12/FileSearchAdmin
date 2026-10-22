@@ -2,6 +2,11 @@
    .toast, .bd-menu, .spinner, .link-btn) берутся из style.css. Здесь —
    раскладка «шапка / сайдбар + контент + журнал», категории и компоненты. */
 
+/* Цвет интерфейса не зависит от темы ОС: нативные элементы (выпадающие списки,
+   полосы прокрутки, поля) следуют теме приложения, а не Windows. */
+:root { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
 /* Атрибут hidden должен скрывать даже элементы с заданным display
    (панели категорий, пилюля обновления, спиннер и т.п.). */
 [hidden] { display: none !important; }
@@ -64,8 +69,11 @@ body {
 .adm-body {
   flex: 1 1 auto; min-height: 0;
   display: grid;
-  grid-template-columns: 216px minmax(0, 1fr) clamp(320px, 30%, 420px);
+  grid-template-columns: 216px minmax(0, 1fr) var(--jw, 360px);
 }
+.admin.no-journal .adm-body { grid-template-columns: 216px minmax(0, 1fr); }
+.admin.no-journal .adm-journal { display: none; }
+
 @media (max-width: 1040px) {
   .adm-body {
     grid-template-columns: 196px minmax(0, 1fr);
@@ -77,6 +85,7 @@ body {
     grid-row: 2; grid-column: 1 / -1;
     border-left: none; border-top: 1px solid var(--hair);
   }
+  .journal-resizer { display: none; }
 }
 
 /* --- Сайдбар --- */
@@ -103,7 +112,7 @@ body {
 .side-item[aria-selected="true"] svg { color: var(--accent-text); }
 
 /* --- Контент --- */
-.content { min-width: 0; min-height: 0; overflow-y: auto; padding: 16px 18px 28px; }
+.content { min-width: 0; min-height: 0; overflow: hidden auto; padding: 16px 18px 28px; }
 .cat-host { margin-top: 14px; }
 .cat { display: grid; gap: 14px; }
 
@@ -123,6 +132,8 @@ body {
 
 .field { display: grid; gap: 6px; min-width: 0; }
 .field > label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+.field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.field-head label { font-size: 12px; color: var(--text-2); font-weight: 500; }
 
 /* --- Поля ввода --- */
 .inp {
@@ -134,6 +145,33 @@ select.inp { height: 32px; padding: 0 8px; cursor: pointer; }
 textarea.inp { height: auto; padding: 9px 11px; resize: vertical; min-height: 96px; font: 13px/1.5 var(--font-mono); }
 .inp::placeholder { color: var(--text-3); }
 .inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* --- Свой выпадающий список --- */
+.dd { position: relative; }
+.dd-button {
+  width: 100%; box-sizing: border-box; height: 32px; padding: 0 10px;
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--hair-strong); border-radius: 8px;
+  background: var(--fill-04); color: var(--text); font: inherit; cursor: pointer; text-align: left;
+}
+.dd-button:hover { background: var(--fill-06); }
+.dd-button:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); outline: none; }
+.dd-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-placeholder { color: var(--text-3); }
+.dd-chevron { width: 14px; height: 14px; color: var(--text-3); flex: 0 0 auto; }
+.dd-menu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40;
+  max-height: 280px; overflow-y: auto; padding: 4px;
+  border: 1px solid var(--hair-strong); border-radius: 10px;
+  background: var(--popover-bg, var(--card-bg)); box-shadow: var(--shadow-pop, var(--shadow-card));
+}
+.dd-option {
+  display: block; width: 100%; box-sizing: border-box; text-align: left;
+  padding: 8px 10px; border: none; border-radius: 6px; background: none;
+  color: var(--text); font: inherit; cursor: pointer; white-space: normal;
+}
+.dd-option:hover { background: var(--fill-06); }
+.dd-option[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-text); }
 
 /* список серверов */
 .servers {
@@ -173,9 +211,19 @@ textarea.inp { height: auto; padding: 9px 11px; resize: vertical; min-height: 96
 
 /* --- Журнал --- */
 .adm-journal {
+  position: relative;
   border-left: 1px solid var(--hair);
   display: flex; flex-direction: column; min-height: 0;
 }
+.journal-resizer {
+  position: absolute; left: -3px; top: 0; bottom: 0; width: 7px;
+  cursor: col-resize; z-index: 6;
+}
+.journal-resizer::before {
+  content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 1px; background: transparent;
+}
+.journal-resizer:hover::before, .journal-resizer.dragging::before { background: var(--accent); }
+.pill-btn[aria-pressed="false"] { background: var(--fill-04); color: var(--text-3); }
 .journal-head {
   display: flex; align-items: center; gap: 8px;
   padding: 11px 14px; border-bottom: 1px solid var(--hair); flex: 0 0 auto;
