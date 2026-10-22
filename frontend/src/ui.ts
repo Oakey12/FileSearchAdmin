@@ -31,3 +31,19 @@ export function button(label: string, variant: '' | 'primary' | 'danger' = ''): 
   const cls = variant ? `btn btn-${variant}` : 'btn'
   return el('button', { class: cls, type: 'button', text: label }) as HTMLButtonElement
 }
+
+/** Фильтрует список по подстроке запроса без учёта регистра. Пустой запрос —
+ *  весь список. Используется для поиска по мере набора. */
+export function filterByName<T>(items: T[], query: string, name: (item: T) => string): T[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return items
+  return items.filter((item) => name(item).toLowerCase().includes(q))
+}
+
+/** Поле поиска с иконкой. oninput вызывается по мере набора. */
+export function searchField(placeholder: string, oninput: (value: string) => void): { el: HTMLElement; input: HTMLInputElement } {
+  const input = el('input', { class: 'search-input', type: 'search', placeholder, spellcheck: false, autocomplete: 'off' }) as HTMLInputElement
+  input.addEventListener('input', () => oninput(input.value))
+  const box = el('div', { class: 'search-box' }, [icon('i-search', 'search-icon'), input])
+  return { el: box, input }
+}
