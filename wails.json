@@ -1,0 +1,18 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "FileSearchAdmin",
+  "outputfilename": "filesearch-admin",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "Oakey"
+  },
+  "info": {
+    "companyName": "FileSearchAdmin",
+    "productName": "Удалённое управление 1С",
+    "productVersion": "1.0.0",
+    "comments": "Администрирование серверов 1С: оповещения, сканирование, команды"
+  }
+}
