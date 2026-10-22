@@ -103,160 +103,95 @@ func (a *App) RunCommandInSession(ip, user, password, script, source string, tar
 
 // --- Сканы, возвращающие данные ---------------------------------------
 
-// ScanUsers возвращает активных пользователей целевого сервера.
-func (a *App) ScanUsers(ip, user, password string) ([]constandstruct.RemoteUser, error) {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
+// runBlocking запускает операцию, возвращающую данные, и блокируется до
+// результата. Событие статуса шлётся ТОЛЬКО когда операция действительно
+// началась: отклонённый старт (операция занята) не гасит индикатор и кнопку
+// «Отменить» у уже идущей операции.
+func runBlocking[T any](a *App, start func(done func(T, error)) bool) (T, error) {
+	var zero T
 	type result struct {
-		users []constandstruct.RemoteUser
+		value T
 		err   error
 	}
 	ch := make(chan result, 1)
-	started := ops.ScanRemoteUsers(a.ctx, ip, user, password, a.logLine,
-		func(users []constandstruct.RemoteUser, err error) { ch <- result{users, err} })
+	started := start(func(value T, err error) { ch <- result{value, err} })
 	if !started {
-		return nil, errOperationNotStarted
+		return zero, errOperationNotStarted
 	}
+	a.emitStatus(true)
+	defer a.emitStatus(false)
 	r := <-ch
-	return r.users, r.err
+	return r.value, r.err
+}
+
+// ScanUsers возвращает активных пользователей целевого сервера.
+func (a *App) ScanUsers(ip, user, password string) ([]constandstruct.RemoteUser, error) {
+	return runBlocking(a, func(done func([]constandstruct.RemoteUser, error)) bool {
+		return ops.ScanRemoteUsers(a.ctx, ip, user, password, a.logLine, done)
+	})
 }
 
 // ScanPrograms возвращает установленные программы целевого компьютера.
 func (a *App) ScanPrograms(ip, user, password string) ([]constandstruct.InstalledProgram, error) {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	type result struct {
-		programs []constandstruct.InstalledProgram
-		err      error
-	}
-	ch := make(chan result, 1)
-	started := ops.ScanInstalledPrograms(a.ctx, ip, user, password, a.logLine,
-		func(programs []constandstruct.InstalledProgram, warnings []string, err error) {
-			ch <- result{programs, err}
-		})
-	if !started {
-		return nil, errOperationNotStarted
-	}
-	r := <-ch
-	return r.programs, r.err
+	return runBlocking(a, func(done func([]constandstruct.InstalledProgram, error)) bool {
+		return ops.ScanInstalledPrograms(a.ctx, ip, user, password, a.logLine,
+			func(programs []constandstruct.InstalledProgram, warnings []string, err error) { done(programs, err) })
+	})
 }
 
 // UninstallProgram удаляет выбранную программу.
 func (a *App) UninstallProgram(ip, user, password string, program constandstruct.InstalledProgram) error {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	ch := make(chan error, 1)
-	started := ops.UninstallInstalledProgram(a.ctx, ip, user, password, program, a.logLine,
-		func(err error) { ch <- err })
-	if !started {
-		return errOperationNotStarted
-	}
-	return <-ch
+	_, err := runBlocking(a, func(done func(struct{}, error)) bool {
+		return ops.UninstallInstalledProgram(a.ctx, ip, user, password, program, a.logLine,
+			func(err error) { done(struct{}{}, err) })
+	})
+	return err
 }
 
 // ScanFolder возвращает список файлов в папке (по пути).
 func (a *App) ScanFolder(ip, user, password, folderPath string) (constandstruct.RemoteFolderResult, error) {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	type result struct {
-		folder constandstruct.RemoteFolderResult
-		err    error
-	}
-	ch := make(chan result, 1)
-	started := ops.ScanRemoteFolder(a.ctx, ip, user, password, folderPath, a.logLine,
-		func(folder constandstruct.RemoteFolderResult, err error) { ch <- result{folder, err} })
-	if !started {
-		return constandstruct.RemoteFolderResult{}, errOperationNotStarted
-	}
-	r := <-ch
-	return r.folder, r.err
+	return runBlocking(a, func(done func(constandstruct.RemoteFolderResult, error)) bool {
+		return ops.ScanRemoteFolder(a.ctx, ip, user, password, folderPath, a.logLine, done)
+	})
 }
 
 // ReadRemoteFile читает текстовый файл для редактирования.
 func (a *App) ReadRemoteFile(ip, user, password string, file constandstruct.RemoteFile) (constandstruct.RemoteTextDocument, error) {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	type result struct {
-		doc constandstruct.RemoteTextDocument
-		err error
-	}
-	ch := make(chan result, 1)
-	started := ops.ReadRemoteTextFile(a.ctx, ip, user, password, file, a.logLine,
-		func(doc constandstruct.RemoteTextDocument, err error) { ch <- result{doc, err} })
-	if !started {
-		return constandstruct.RemoteTextDocument{}, errOperationNotStarted
-	}
-	r := <-ch
-	return r.doc, r.err
+	return runBlocking(a, func(done func(constandstruct.RemoteTextDocument, error)) bool {
+		return ops.ReadRemoteTextFile(a.ctx, ip, user, password, file, a.logLine, done)
+	})
 }
 
 // SaveRemoteFile сохраняет изменённый текст файла (с резервной копией).
 func (a *App) SaveRemoteFile(ip, user, password string, document constandstruct.RemoteTextDocument, newContent string) (constandstruct.RemoteSaveResult, error) {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	type result struct {
-		saved constandstruct.RemoteSaveResult
-		err   error
-	}
-	ch := make(chan result, 1)
-	started := ops.SaveRemoteTextFile(a.ctx, ip, user, password, document, newContent, a.logLine,
-		func(saved constandstruct.RemoteSaveResult, err error) { ch <- result{saved, err} })
-	if !started {
-		return constandstruct.RemoteSaveResult{}, errOperationNotStarted
-	}
-	r := <-ch
-	return r.saved, r.err
+	return runBlocking(a, func(done func(constandstruct.RemoteSaveResult, error)) bool {
+		return ops.SaveRemoteTextFile(a.ctx, ip, user, password, document, newContent, a.logLine, done)
+	})
 }
 
 // DeleteRemoteFile удаляет выбранный файл.
 func (a *App) DeleteRemoteFile(ip, user, password string, file constandstruct.RemoteFile) error {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	ch := make(chan error, 1)
-	started := ops.DeleteRemoteFile(a.ctx, ip, user, password, file, a.logLine,
-		func(err error) { ch <- err })
-	if !started {
-		return errOperationNotStarted
-	}
-	return <-ch
+	_, err := runBlocking(a, func(done func(struct{}, error)) bool {
+		return ops.DeleteRemoteFile(a.ctx, ip, user, password, file, a.logLine,
+			func(err error) { done(struct{}{}, err) })
+	})
+	return err
 }
 
 // ScanSystemInfo собирает сведения о целевом компьютере.
 func (a *App) ScanSystemInfo(ip, user, password string) (constandstruct.SystemInfo, error) {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	type result struct {
-		info constandstruct.SystemInfo
-		err  error
-	}
-	ch := make(chan result, 1)
-	started := ops.ScanSystemInfo(a.ctx, ip, user, password, a.logLine,
-		func(info constandstruct.SystemInfo, warnings []string, err error) { ch <- result{info, err} })
-	if !started {
-		return constandstruct.SystemInfo{}, errOperationNotStarted
-	}
-	r := <-ch
-	return r.info, r.err
+	return runBlocking(a, func(done func(constandstruct.SystemInfo, error)) bool {
+		return ops.ScanSystemInfo(a.ctx, ip, user, password, a.logLine,
+			func(info constandstruct.SystemInfo, warnings []string, err error) { done(info, err) })
+	})
 }
 
 // FindApplication ищет приложение по имени (реестр, процессы, файлы).
 func (a *App) FindApplication(ip, user, password, query string) ([]constandstruct.ApplicationMatch, error) {
-	a.emitStatus(true)
-	defer a.emitStatus(false)
-	type result struct {
-		matches []constandstruct.ApplicationMatch
-		err     error
-	}
-	ch := make(chan result, 1)
-	started := ops.FindApplication(a.ctx, ip, user, password, query, a.logLine,
-		func(matches []constandstruct.ApplicationMatch, warnings []string, err error) {
-			ch <- result{matches, err}
-		})
-	if !started {
-		return nil, errOperationNotStarted
-	}
-	r := <-ch
-	return r.matches, r.err
+	return runBlocking(a, func(done func([]constandstruct.ApplicationMatch, error)) bool {
+		return ops.FindApplication(a.ctx, ip, user, password, query, a.logLine,
+			func(matches []constandstruct.ApplicationMatch, warnings []string, err error) { done(matches, err) })
+	})
 }
 
 // FormatSystemInfo раскладывает сведения о системе в пары «поле/значение» для
@@ -264,4 +199,3 @@ func (a *App) FindApplication(ip, user, password, query string) ([]constandstruc
 func (a *App) FormatSystemInfo(info constandstruct.SystemInfo) [][2]string {
 	return ops.FormatSystemInfo(info)
 }
-
