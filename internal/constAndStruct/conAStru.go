@@ -18,6 +18,17 @@ const (
 	OperationTimeout      = 10 * time.Minute
 
 	MaxParallelServers = 2
+
+	// Проверка программы по списку компьютеров только читает реестр и диск,
+	// поэтому её можно вести шире обычных операций: список бывает в сотни ПК.
+	MaxParallelAppChecks = 8
+)
+
+// Итог проверки одного компьютера в ApplicationCheck.Status.
+const (
+	AppCheckInstalled = "installed"
+	AppCheckMissing   = "missing"
+	AppCheckError     = "error"
 )
 
 type EmployeeProcess struct {
@@ -71,6 +82,20 @@ type ApplicationMatch struct {
 	Name    string `json:"Name"`
 	Version string `json:"Version"`
 	Path    string `json:"Path"`
+}
+
+// ApplicationCheck — ответ одного компьютера при проверке программы по списку.
+// Summary — главная найденная запись, Owners — у кого она стоит, Warnings —
+// чего сценарий не смог увидеть (например, профили без активного сеанса).
+type ApplicationCheck struct {
+	Name     string             `json:"name"`
+	IP       string             `json:"ip"`
+	Status   string             `json:"status"`
+	Summary  string             `json:"summary"`
+	Owners   []string           `json:"owners"`
+	Matches  []ApplicationMatch `json:"matches"`
+	Warnings []string           `json:"warnings"`
+	Error    string             `json:"error"`
 }
 
 // SystemInfo — сводка о целевом компьютере для системного администратора.

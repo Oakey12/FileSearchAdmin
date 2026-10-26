@@ -90,7 +90,12 @@ func WaitForOperations(ctx context.Context) bool {
 }
 
 func runTargets(ctx context.Context, targets []constandstruct.Server, run func(constandstruct.Server)) {
-	limit := constandstruct.MaxParallelServers
+	runTargetsLimit(ctx, targets, constandstruct.MaxParallelServers, run)
+}
+
+// runTargetsLimit обходит цели, держа одновременно не больше limit удалённых
+// вызовов. После отмены ctx новые цели не начинаются.
+func runTargetsLimit(ctx context.Context, targets []constandstruct.Server, limit int, run func(constandstruct.Server)) {
 	if limit < 1 {
 		limit = 1
 	}
