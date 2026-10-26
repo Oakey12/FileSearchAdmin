@@ -14,7 +14,7 @@ func TestParseComputersAcceptsAllForms(t *testing.T) {
 	}
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
-			computers, err := ParseComputers([]byte(data))
+			computers, _, err := ParseComputers([]byte(data))
 			if err != nil {
 				t.Fatalf("ParseComputers() вернул ошибку: %v", err)
 			}
@@ -38,12 +38,11 @@ func TestParseComputersRejectsBadInput(t *testing.T) {
 		"empty":       {`{"computers": []}`, "список компьютеров пуст"},
 		"no ip":       {`{"computers": [{"name": "ПК"}]}`, "запись №1: не указан ip"},
 		"bad ip":      {`["10.0.0.1", "10.0.0.300 "]`, "запись №2: некорректный"},
-		"duplicate":   {`["10.0.0.1", {"ip": "10.0.0.1"}]`, "уже указан в записи №1"},
 		"number":      {`[42]`, "запись №1: ожидается строка"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			_, err := ParseComputers([]byte(tc.data))
+			_, _, err := ParseComputers([]byte(tc.data))
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("ошибка %v, ожидалось содержащее %q", err, tc.want)
 			}
@@ -56,11 +55,38 @@ func TestComputersExampleIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("образец не прочитан: %v", err)
 	}
-	computers, err := ParseComputers(data)
+	computers, _, err := ParseComputers(data)
 	if err != nil {
 		t.Fatalf("образец не разбирается: %v", err)
 	}
 	if len(computers) < 2 {
 		t.Fatalf("в образце слишком мало записей: %d", len(computers))
+	}
+}
+
+func TestParseComputersSkipsDuplicateAddresses(t *testing.T) {
+	data := `{"computers": [
+		{"name": "", "ip": "192.168.140.72"},
+		{"name": "", "ip": "192.168.140.84"},
+		{"name": "Склад", "ip": "192.168.140.72"},
+		{"name": "Касса", "ip": "192.168.140.72"},
+		" 192.168.140.84 "
+	]}`
+	computers, duplicates, err := ParseComputers([]byte(data))
+	if err != nil {
+		t.Fatalf("повторы не должны отклонять файл: %v", err)
+	}
+	if duplicates != 3 {
+		t.Fatalf("пропущено повторов %d, ожидалось 3", duplicates)
+	}
+	if len(computers) != 2 {
+		t.Fatalf("компьютеров %d, ожидалось 2: %#v", len(computers), computers)
+	}
+	// Первое непустое имя достаётся адресу, записанному сначала без имени.
+	if computers[0].IP != "192.168.140.72" || computers[0].Name != "Склад" {
+		t.Fatalf("первый компьютер: %#v", computers[0])
+	}
+	if computers[1].IP != "192.168.140.84" || computers[1].Name != "192.168.140.84" {
+		t.Fatalf("второй компьютер: %#v", computers[1])
 	}
 }

@@ -22,9 +22,18 @@ var computersExample []byte
 // computersFileLimit — больше этого JSON со списком адресов не бывает.
 const computersFileLimit = 4 << 20
 
+// ComputerList — загруженный список компьютеров. Duplicates — сколько
+// повторяющихся адресов пропущено: о них стоит сказать, но файл из-за них
+// не отклоняется.
+type ComputerList struct {
+	Computers  []constandstruct.Server `json:"computers"`
+	Duplicates int                     `json:"duplicates"`
+}
+
 // ImportComputers открывает диалог выбора JSON со списком компьютеров и
 // возвращает разобранный список. Пустой список и nil-ошибка — выбор отменён.
-func (a *App) ImportComputers() ([]constandstruct.Server, error) {
+// Каждая загрузка заменяет прежний список целиком.
+func (a *App) ImportComputers() (ComputerList, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Выберите JSON со списком компьютеров",
 		Filters: []runtime.FileFilter{
@@ -33,25 +42,29 @@ func (a *App) ImportComputers() ([]constandstruct.Server, error) {
 		},
 	})
 	if err != nil || path == "" {
-		return nil, err
+		return ComputerList{}, err
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось прочитать файл: %w", err)
+		return ComputerList{}, fmt.Errorf("не удалось прочитать файл: %w", err)
 	}
 	if info.Size() > computersFileLimit {
-		return nil, fmt.Errorf("файл слишком большой: %d байт", info.Size())
+		return ComputerList{}, fmt.Errorf("файл слишком большой: %d байт", info.Size())
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("не удалось прочитать файл: %w", err)
+		return ComputerList{}, fmt.Errorf("не удалось прочитать файл: %w", err)
 	}
-	computers, err := config.ParseComputers(data)
+	computers, duplicates, err := config.ParseComputers(data)
 	if err != nil {
-		return nil, err
+		return ComputerList{}, err
 	}
-	a.logLine(fmt.Sprintf("Загружен список компьютеров для проверки: %d.", len(computers)))
-	return computers, nil
+	line := fmt.Sprintf("Загружен список компьютеров для проверки: %d.", len(computers))
+	if duplicates > 0 {
+		line += fmt.Sprintf(" Пропущено повторяющихся адресов: %d.", duplicates)
+	}
+	a.logLine(line)
+	return ComputerList{Computers: computers, Duplicates: duplicates}, nil
 }
 
 // SaveComputersExample сохраняет образец JSON со списком компьютеров туда,
