@@ -1,116 +1,80 @@
-# FileSearchAdmin — развёртывание через Nginx и CI/CD
+# FileSearchAdmin — развёртывание через Nginx (порт 1213) и CI/CD
 
-Документ: анализ проекта, что уже известно про сервер Nginx, как настроить
-раздачу приложения и автоматический выпуск (CI/CD).
+Приложение раздаётся с **отдельного порта Nginx — `1213`** (у FileSearch —
+`1212`, не пересекается). Документ: анализ проекта, что известно про сервер
+Nginx, пошаговая настройка порта 1213 и автоматический выпуск (CI/CD).
 
 ---
 
 ## 1. Анализ проекта и работоспособность
 
-**Что это.** Десктоп-утилита администрирования 1С (Windows) — полный порт
-`1Cproc` на **Wails v2.16** (бэкенд Go, окно WebView2, интерфейс на ванильном
-TypeScript в стиле FileSearch). Удалённые операции идут через локальный
-`powershell.exe` → CIM/DCOM к целевым серверам (оповещения `msg.exe`, поиск и
-завершение `1cv7s`, команды PowerShell, сканер программ/файлов, сведения о
-системе).
+Десктоп-утилита администрирования 1С (Windows) — порт `1Cproc` на **Wails
+v2.16** (Go + WebView2, интерфейс на TypeScript). Удалённые операции идут через
+локальный `powershell.exe` → CIM/DCOM к целевым серверам.
 
-**Состояние на сейчас (ветка `main`, коммит `c3167c4`):**
+Состояние (`main`): `go vet` чист, Go-тесты и 35 vitest зелёные, `tsc` чист,
+`wails build -s -skipbindings` даёт `build\bin\filesearch-admin.exe` (~12 МБ),
+окно запускается. **Проект работоспособен.**
 
-| Проверка | Команда | Результат |
-|---|---|---|
-| Статический анализ | `go vet ./...` | чисто |
-| Go-тесты | `go test ./...` | все проходят |
-| Тесты интерфейса | `cd frontend && npx vitest run` | 35 тестов проходят |
-| Типы TS | `cd frontend && npx tsc --noEmit` | чисто |
-| Сборка | `wails build -s -skipbindings` | `build\bin\filesearch-admin.exe` (~12 МБ) |
-| Запуск | двойной клик по exe | окно открывается, журнал пишется |
+Готовый exe скопирован в `G:\ИТ отдел\Утилиты\FileSearchAdmin\filesearch-admin.exe`.
 
-Вывод: **проект работоспособен и собирается.** Готовый бинарник лежит в
-`build\bin\filesearch-admin.exe` (в репозиторий не коммитится — см. `.gitignore`)
-и скопирован в `G:\ИТ отдел\Утилиты\FileSearchAdmin\filesearch-admin.exe`.
-
-**Важно про сборку:** `frontend/dist` и `frontend/wailsjs` лежат в репозитории,
-поэтому серверу выпуска **не нужен Node.js** — только Go 1.25+ и Wails CLI.
-Node нужен только при правке интерфейса (`frontend/src`).
-
-**Куда приложение ходит за обновлениями и списком серверов** (уже прописано в коде):
-- список серверов: `http://192.168.150.100:1212/filesearch-admin/servers.json`
+**Адреса, зашитые в приложение (уже на порт 1213):**
+- список серверов: `http://192.168.150.100:1213/servers.json`
   (переопределяется переменной среды `FSADMIN_SERVERS_URL`);
-- обновления: `http://192.168.150.100:1212/filesearch-admin/latest.json`.
+- обновления: `http://192.168.150.100:1213/latest.json`.
 
-То есть код **уже нацелен** на ваш Nginx-сервер — остаётся создать там каталог
-`filesearch-admin` и выложить файлы.
+Сборке не нужен Node.js — `frontend/dist` и `frontend/wailsjs` лежат в
+репозитории. Нужны только **Go 1.25+** и **Wails CLI**.
 
 ---
 
-## 2. Где работает Nginx и что на нём сейчас крутится
+## 2. Сервер Nginx: где работает и что уже крутится
 
-Проверено по сети с машины разработки (AI2, 192.168.100.16). Сервер Nginx —
-**192.168.150.100**:
+Проверено по сети. Сервер — **192.168.150.100**:
 
-| Порт | Служба | Что отдаёт |
+| Порт | Служба | Назначение |
 |---|---|---|
-| **1212** | nginx/1.28.3 | Обновления **FileSearch**: `/file-search/latest.json` → 200. Корень `/` → 404 (автолистинг выключен). |
-| **8080** | nginx/1.28.3 | Страница **1Cproc** («Удалённое управление 1cv7s»). |
-| **80** | Microsoft-IIS/10.0 | Отдельный сайт на IIS (не Nginx). |
-| **443** | (IIS/HTTPS) | HTTPS с самоподписанным сертификатом. |
+| **1212** | nginx/1.28.3 | Обновления FileSearch (`/file-search/*`). |
+| **8080** | nginx/1.28.3 | Страница 1Cproc. |
+| **80** | Microsoft-IIS/10.0 | Отдельный сайт на IIS. |
+| **443** | IIS/HTTPS | HTTPS (самоподписанный сертификат). |
+| **1213** | — | **Свободен** (закрыт). Его и настроим под FileSearchAdmin. |
 
-Путь `/filesearch-admin/` на `:1212` сейчас свободен (404) — его и займём.
-
-### Как подтвердить это на самом сервере (192.168.150.100)
-
-Зайдите на сервер (RDP) и выполните в PowerShell:
+### Подтвердить на самом сервере (RDP на 192.168.150.100, PowerShell)
 
 ```powershell
-# 1. Процессы и путь к nginx.exe
+# 1) Процессы nginx и путь к nginx.exe
 Get-Process nginx | Select-Object Id, Path
 
-# 2. Какие порты слушает nginx (сопоставьте PID с шагом 1)
+# 2) Что nginx слушает сейчас
 Get-NetTCPConnection -State Listen | Sort-Object LocalPort |
   Select-Object LocalPort, OwningProcess
 
-# 3. Где конфиг и что в нём за сайты (server/listen/root/location)
-#    Путь к nginx возьмите из шага 1, например C:\Users\1108\nginx-1.28.3
+# 3) Конфиг и путь установки nginx (prefix). Путь — из шага 1,
+#    например C:\Users\1108\nginx-1.28.3
 $nginx = 'C:\Users\1108\nginx-1.28.3'
 Get-Content "$nginx\conf\nginx.conf"
-Select-String -Path "$nginx\conf\*.conf","$nginx\conf\**\*.conf" `
-  -Pattern 'listen|server_name|root|location'
 ```
 
-В `nginx.conf` вы увидите блок `server { listen 1212; ... root <путь>; }` —
-это и есть сервер обновлений. Запомните его `root` (ниже он нужен).
+Запомните **путь установки nginx** (prefix) — в нём лежат `conf\nginx.conf`,
+`nginx.exe` и каталоги сайтов (`html-...`). Ниже он обозначен `<NGINX>`.
 
 ---
 
-## 3. Настройка Nginx под FileSearchAdmin
+## 3. Настройка порта 1213 под FileSearchAdmin
 
-Рекомендуемый вариант — **переиспользовать существующий сервер `:1212`** и
-просто добавить подкаталог `filesearch-admin`. Он требует минимум (часто —
-нуля) изменений конфига, потому что `:1212` уже раздаёт любые подкаталоги
-своего `root` (так работает `/file-search/`).
+Четыре шага: каталог → блок в конфиге → перезагрузка nginx → брандмауэр.
 
-### Шаг 1. Определите `root` сервера `:1212`
-
-Из `nginx.conf` (см. раздел 2). По аналогии с FileSearch это, скорее всего:
-
-```
-C:\Users\1108\nginx-1.28.3\html-filesearch
-```
-
-тогда `/file-search/` = `...\html-filesearch\file-search\`, а новый
-`/filesearch-admin/` = `...\html-filesearch\filesearch-admin\`.
-
-### Шаг 2. Создайте каталог приложения и выложите список серверов
+### Шаг 1. Каталог с файлами
 
 ```powershell
-$root = 'C:\Users\1108\nginx-1.28.3\html-filesearch'   # root сервера :1212
-New-Item -ItemType Directory -Force "$root\filesearch-admin" | Out-Null
-# Положите список серверов 1С (формат — см. docs/servers.example.json)
-Copy-Item .\docs\servers.example.json "$root\filesearch-admin\servers.json"
+$nginx = 'C:\Users\1108\nginx-1.28.3'               # <NGINX> — путь установки
+New-Item -ItemType Directory -Force "$nginx\html-filesearch-admin" | Out-Null
+# Список серверов 1С (формат — docs\servers.example.json)
+Copy-Item .\docs\servers.example.json "$nginx\html-filesearch-admin\servers.json"
 ```
 
-Отредактируйте `servers.json` под свои серверы (имя + IP, адреса уникальны).
-Формат:
+Отредактируйте `servers.json` под свои серверы (имя + IP, адреса уникальны):
 
 ```json
 {
@@ -121,129 +85,134 @@ Copy-Item .\docs\servers.example.json "$root\filesearch-admin\servers.json"
 }
 ```
 
-### Шаг 3. Проверьте
+### Шаг 2. Блок server на порт 1213 в `nginx.conf`
 
-```powershell
-# правильный MIME для .json (обычно уже есть в mime.types)
-Invoke-WebRequest http://192.168.150.100:1212/filesearch-admin/servers.json -UseBasicParsing
+Откройте `<NGINX>\conf\nginx.conf` и **внутри блока `http { … }`** (рядом с
+существующим `server { listen 1212; … }`) добавьте:
+
+```nginx
+# FileSearchAdmin — обновления и список серверов
+server {
+    listen       1213;
+    server_name  _;
+    charset      utf-8;
+
+    # путь относителен папки установки nginx (<NGINX>); можно и абсолютный
+    root         html-filesearch-admin;
+
+    location / {
+        autoindex off;
+        try_files  $uri =404;
+    }
+}
 ```
 
-Если `servers.json` отдаётся с кодом 200 — настройка Nginx закончена.
-**Отдельный `server`-блок или правку `nginx.conf` добавлять не нужно**, если
-`:1212` уже раздаёт подкаталоги своего `root`.
+`.json` отдаётся как `application/json` (есть в `mime.types`), `.exe` — как
+`application/octet-stream` (скачивается). Отдельная настройка MIME не нужна.
 
-> Если на `:1212` подкаталоги **не** раздаются (у сервера строгий `location`),
-> добавьте в его `server { listen 1212; }` блок и перечитайте конфиг
-> (`nginx -s reload`):
->
-> ```nginx
-> location /filesearch-admin/ {
->     root   html-filesearch;   # тот же root, что и у /file-search/
->     types { application/json json; application/octet-stream exe; }
->     default_type application/octet-stream;
-> }
-> ```
+### Шаг 3. Проверить конфиг и перезагрузить nginx
+
+```powershell
+cd 'C:\Users\1108\nginx-1.28.3'      # <NGINX>
+.\nginx.exe -t                        # проверка синтаксиса -> "syntax is ok"
+.\nginx.exe -s reload                 # применить без остановки
+```
+
+### Шаг 4. Открыть порт 1213 в брандмауэре
+
+```powershell
+New-NetFirewallRule -DisplayName "Nginx FileSearchAdmin 1213" `
+  -Direction Inbound -Protocol TCP -LocalPort 1213 -Action Allow
+```
+
+### Проверка
+
+```powershell
+Invoke-WebRequest http://192.168.150.100:1213/servers.json -UseBasicParsing
+```
+
+Код **200** и ваш JSON — настройка Nginx закончена. (`latest.json` появится
+после первого релиза, раздел 4.)
 
 ### (Необязательно) Страница скачивания
 
-Если нужна веб-страница «скачать утилиту» (как у 1Cproc на `:8080`), положите
-`index.html` в `...\filesearch-admin\` со ссылкой на `FileSearchAdmin.zip`
-(этот архив кладёт `release.ps1`, см. ниже).
-
-### Брандмауэр
-
-Порт `1212` уже открыт (FileSearch работает), отдельных правил не требуется.
+Положите `index.html` в `html-filesearch-admin\` со ссылкой на
+`FileSearchAdmin.zip` — тогда `http://192.168.150.100:1213/` будет страницей
+«скачать утилиту» (архив кладёт `release.ps1`).
 
 ---
 
-## 4. Выпуск версии вручную (без CI)
+## 4. Выпуск версии вручную
 
-На сервере (или на машине с Go+Wails), из корня репозитория:
+На сервере (или на машине с Go + Wails), из корня репозитория:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\release.ps1 -Version 1.0.0 -Notes "Первый релиз"
 ```
 
-Скрипт `tools/release.ps1`:
-1. прогоняет `go test ./...`;
-2. собирает `filesearch-admin-<версия>.exe` через `wails build` с версией в
-   `-ldflags`;
-3. кладёт в `...\filesearch-admin\`: `filesearch-admin-<версия>.exe`,
-   `latest.json` (манифест с SHA-256), `FileSearchAdmin.zip`.
+Скрипт: прогоняет `go test ./...`, собирает `filesearch-admin-<версия>.exe`
+через `wails build` (версия в `-ldflags`), и кладёт в `html-filesearch-admin\`:
+`filesearch-admin-<версия>.exe`, `latest.json` (манифест с SHA-256),
+`FileSearchAdmin.zip`. После этого кнопка «Обновить» в приложении увидит
+новую версию. `servers.json` скрипт не трогает — он ведётся отдельно (раздел 3).
 
-После этого кнопка «Обновить» в приложении увидит новую версию.
-`servers.json` скрипт **не трогает** — он ведётся отдельно (раздел 3, шаг 2).
+По умолчанию публикует в `C:\Users\1108\nginx-1.28.3\html-filesearch-admin`.
+Если путь установки nginx другой — укажите явно:
+
+```powershell
+.\tools\release.ps1 -Version 1.0.0 -PublishDir '<NGINX>\html-filesearch-admin'
+```
 
 ---
 
 ## 5. CI/CD — автоматический выпуск
 
 Репозиторий на GitHub (`github.com/Oakey12/FileSearchAdmin`). Nginx-сервер во
-внутренней сети, облачные раннеры GitHub до него не достанут, поэтому
-используем **self-hosted раннер на самом Nginx-сервере**: он собирает и сразу
-кладёт файлы в локальный каталог Nginx. Workflow уже в репозитории:
-`.github/workflows/release.yml`.
+внутренней сети, поэтому используем **self-hosted раннер на самом
+Nginx-сервере**: он собирает и сразу кладёт файлы в локальный каталог.
+Workflow в репозитории — `.github/workflows/release.yml`.
 
 ### Шаг 1. Подготовить сервер (однократно)
 
-На 192.168.150.100 должны быть в `PATH`:
-- **Git**, **Go 1.25+**, **Wails CLI**
-  (`go install github.com/wailsapp/wails/v2/cmd/wails@latest` → добавить
-  `%USERPROFILE%\go\bin` в PATH). Node.js не нужен.
+В `PATH` на 192.168.150.100 должны быть **git**, **go 1.25+**, **wails**
+(`go install github.com/wailsapp/wails/v2/cmd/wails@latest` → добавить
+`%USERPROFILE%\go\bin`). Node.js не нужен. Проверка:
+`git --version; go version; wails version`.
 
-Проверка: `git --version; go version; wails version`.
-
-### Шаг 2. Установить GitHub Actions self-hosted runner
+### Шаг 2. Установить self-hosted runner
 
 GitHub → репозиторий → **Settings → Actions → Runners → New self-hosted runner
-→ Windows x64** и выполнить показанные команды на сервере. При настройке задать
-метки **`self-hosted,windows`**. Раннер лучше поставить **службой**
-(`svc.cmd install && svc.cmd start`), чтобы работал без входа в систему.
+→ Windows x64**, выполнить показанные команды на сервере, метки
+**`self-hosted,windows`**. Поставить службой (`svc.cmd install && svc.cmd
+start`), чтобы работал без входа в систему. Раннеру нужен только исходящий
+HTTPS к GitHub.
 
-Раннеру нужен только исходящий HTTPS к GitHub (вход извне не требуется).
-
-### Шаг 3. Выпуск
-
-Теперь релиз — это тег:
+### Шаг 3. Выпуск — через тег
 
 ```bash
 git tag v1.0.1
 git push origin v1.0.1
 ```
 
-Workflow сам: сделает checkout тега → `tools/release.ps1 -Version 1.0.1
--SkipGitChecks` → соберёт и опубликует в каталог Nginx. Также можно запустить
-вручную: **Actions → Release FileSearchAdmin → Run workflow** и ввести версию.
-
-> `-SkipGitChecks` отключает проверки чистоты дерева/отставания от `origin/main`
-> — в CI раннер и так делает чистый checkout нужного коммита.
-
-### Проверка каталога публикации
-
-По умолчанию `release.ps1` публикует в
-`C:\Users\1108\nginx-1.28.3\html-filesearch\filesearch-admin`. Если `root`
-сервера `:1212` другой — передайте его параметром:
-
-```powershell
-.\tools\release.ps1 -Version 1.0.1 -PublishDir 'D:\nginx\html\filesearch-admin' -SkipGitChecks
-```
-
-(в workflow это можно добавить в строку запуска `release.ps1`).
+Workflow сам: checkout тега → `tools\release.ps1 -Version 1.0.1
+-SkipGitChecks` → сборка и публикация в каталог Nginx. Либо вручную:
+**Actions → Release FileSearchAdmin → Run workflow** с вводом версии.
 
 ### Альтернатива без раннера
 
-Если ставить раннер нельзя — запланированная задача на сервере: раз в N минут
-`git fetch`, и если появился новый тег `v*` — запустить `release.ps1`. Это
-проще, но без обратной связи и логов GitHub Actions.
+Запланированная задача на сервере: раз в N минут `git fetch`; если появился
+новый тег `v*` — запустить `release.ps1`. Проще, но без логов Actions.
 
 ---
 
 ## 6. Чеклист запуска «с нуля»
 
-1. [ ] На сервере подтвердить `root` сервера `:1212` (раздел 2).
-2. [ ] Создать `...\filesearch-admin\`, положить и отредактировать `servers.json` (раздел 3).
-3. [ ] Проверить `http://192.168.150.100:1212/filesearch-admin/servers.json` → 200.
-4. [ ] Поставить на сервер Go + Wails (CI) или собрать вручную (раздел 4).
-5. [ ] (CI) Установить self-hosted runner, выпустить тег `v1.0.0`.
-6. [ ] Раздать `filesearch-admin.exe` (или `FileSearchAdmin.zip`) сотрудникам.
-7. [ ] Проверить кнопку «Обновить» в приложении на следующем релизе.
+1. [ ] На сервере: создать `<NGINX>\html-filesearch-admin`, положить и
+       отредактировать `servers.json` (раздел 3, шаг 1).
+2. [ ] Добавить `server { listen 1213; … }` в `nginx.conf` (шаг 2).
+3. [ ] `nginx -t` → `nginx -s reload` (шаг 3).
+4. [ ] Открыть TCP 1213 в брандмауэре (шаг 4).
+5. [ ] Проверить `http://192.168.150.100:1213/servers.json` → 200.
+6. [ ] Поставить Go + Wails на сервер (CI) или собрать вручную (раздел 4).
+7. [ ] Выпустить версию: `release.ps1` вручную или тег `v1.0.0` (CI).
+8. [ ] Раздать `filesearch-admin.exe` сотрудникам; проверить «Обновить».

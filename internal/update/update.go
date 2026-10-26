@@ -26,7 +26,7 @@ import (
 //	-ldflags "-X filesearch-admin/internal/update.ManifestURL=http://host:1212/filesearch-admin/latest.json"
 var (
 	CurrentVersion = "1.0.0"
-	ManifestURL    = "http://192.168.150.100:1212/filesearch-admin/latest.json"
+	ManifestURL    = "http://192.168.150.100:1213/latest.json"
 )
 
 var (
