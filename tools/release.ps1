@@ -1,7 +1,7 @@
-﻿param(
+﻿﻿param(
     [Parameter(Mandatory)] [string]$Version,
     [string]$Notes = "",
-    [string]$PublishDir = "C:\Users\1108\nginx-1.28.3\html-filesearch\filesearch-admin",
+    [string]$PublishDir = "C:\Users\1108\nginx-1.28.3\html-filesearch-admin",
     # Пересобрать интерфейс через npm. Нужен доступ к registry.npmjs.org.
     # Без ключа берётся готовый frontend/dist из репозитория.
     [switch]$BuildFrontend,
@@ -86,5 +86,5 @@ Compress-Archive -Path (Join-Path $staging "FileSearchAdmin.exe") -DestinationPa
 Move-Item $zipTmp (Join-Path $PublishDir "FileSearchAdmin.zip") -Force
 Remove-Item -Recurse -Force $staging
 
-Write-Host "Опубликовано $Version -> http://192.168.150.100:1212/filesearch-admin/latest.json"
-Write-Host "Архив для скачивания -> http://192.168.150.100:1212/filesearch-admin/FileSearchAdmin.zip"
+Write-Host "Опубликовано $Version -> http://192.168.150.100:1213/latest.json"
+Write-Host "Архив для скачивания -> http://192.168.150.100:1213/FileSearchAdmin.zip"
