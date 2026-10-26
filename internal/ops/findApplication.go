@@ -59,25 +59,10 @@ func FindApplication(
 		logLine(fmt.Sprintf("=== Поиск «%s» на %s ===", query, targetIP))
 		finishStatus := startRemoteStatus(target, constandstruct.ProgramScanTimeout, logLine)
 
-		lines, runErr := remotefunc.RunRemoteScriptWithOutputLimitAndProgress(
-			operationCtx,
-			targetIP,
-			username,
-			password,
-			psscript.FindApplicationScript(query),
-			remotefunc.MaxRemoteOutputCharacters,
+		found, warnings, resultErr := findApplicationOn(
+			operationCtx, targetIP, username, password, query,
 			remoteProgressLogger(target, logLine),
 		)
-
-		found, warnings, parseErr := parseApplicationMatches(lines)
-		resultErr := runErr
-		if resultErr == nil {
-			if text := remoteError(lines); text != "" {
-				resultErr = fmt.Errorf("%s", text)
-			} else {
-				resultErr = parseErr
-			}
-		}
 		finishStatus(resultErr)
 
 		if resultErr != nil {
@@ -100,6 +85,39 @@ func FindApplication(
 		}
 	}()
 	return true
+}
+
+// runRemoteScript — точка подмены для тестов поиска приложения: в бою вызывает
+// реальный транспорт через PowerShell/CIM.
+var runRemoteScript = remotefunc.RunRemoteScriptWithOutputLimitAndProgress
+
+// findApplicationOn выполняет сценарий поиска на одном компьютере и разбирает
+// ответ. Общая часть одиночного поиска и проверки по списку компьютеров.
+func findApplicationOn(
+	ctx context.Context,
+	address, username, password, query string,
+	progress remotefunc.ProgressFunc,
+) ([]constandstruct.ApplicationMatch, []string, error) {
+	lines, runErr := runRemoteScript(
+		ctx,
+		address,
+		username,
+		password,
+		psscript.FindApplicationScript(query),
+		remotefunc.MaxRemoteOutputCharacters,
+		progress,
+	)
+	found, warnings, parseErr := parseApplicationMatches(lines)
+	if runErr != nil {
+		return nil, warnings, runErr
+	}
+	if text := remoteError(lines); text != "" {
+		return nil, warnings, fmt.Errorf("%s", text)
+	}
+	if parseErr != nil {
+		return nil, warnings, parseErr
+	}
+	return found, warnings, nil
 }
 
 // parseApplicationMatches разбирает ответ сценария поиска. Записи приходят

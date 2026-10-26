@@ -1,5 +1,5 @@
 // Категория «Программы»: установленные программы целевого компьютера, поиск по
-// имени (по мере набора) и удаление.
+// имени (по мере набора), удаление и проверка программы по списку компьютеров.
 
 import { Go, type InstalledProgram } from './go'
 import { clear, el } from './dom'
@@ -7,6 +7,7 @@ import { confirmAction } from './confirm'
 import { toast } from './toast'
 import { categoryHeader, card, actions, button, filterByName, searchField } from './ui'
 import type { Creds } from './creds'
+import { AppCheckCard } from './appcheck'
 
 export class ProgramsPanel {
   private programs: InstalledProgram[] = []
@@ -22,7 +23,7 @@ export class ProgramsPanel {
   }
 
   private build(): void {
-    this.root.append(categoryHeader('i-box', 'Программы', 'Установленные программы целевого компьютера, поиск по имени и удаление.'))
+    this.root.append(categoryHeader('i-box', 'Программы', 'Установленные программы целевого компьютера и проверка по списку ПК: где программа установлена.'))
     const panel = card('Установленные программы')
 
     const scanBtn = button('Сканировать программы')
@@ -43,6 +44,8 @@ export class ProgramsPanel {
     this.listEl = el('div', { class: 'result-list' })
     panel.append(this.listEl)
     this.root.append(panel)
+
+    new AppCheckCard(this.root, this.creds)
   }
 
   private async scan(): Promise<void> {

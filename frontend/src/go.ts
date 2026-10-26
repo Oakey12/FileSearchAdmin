@@ -52,6 +52,27 @@ export function onEmployees(cb: (list: EmployeeProcess[]) => void): () => void {
   return safeOn('scan:employees', (list) => cb((list as EmployeeProcess[]) ?? []))
 }
 
+/** Ответ одного компьютера при проверке программы по списку. Приходит только
+ *  событием, поэтому в сгенерированных моделях его нет. */
+export interface ApplicationCheck {
+  name: string
+  ip: string
+  status: 'installed' | 'missing' | 'error'
+  summary: string
+  owners: string[] | null
+  matches: ApplicationMatch[] | null
+  warnings: string[] | null
+  error: string
+}
+
+export function onAppCheckResult(cb: (check: ApplicationCheck) => void): () => void {
+  return safeOn('appcheck:result', (check) => cb(check as ApplicationCheck))
+}
+
+export function onAppCheckDone(cb: () => void): () => void {
+  return safeOn('appcheck:done', () => cb())
+}
+
 export function onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void {
   return safeOn('update:available', (info) => cb(info as UpdateInfo))
 }

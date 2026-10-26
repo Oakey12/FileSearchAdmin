@@ -277,3 +277,39 @@ textarea.inp { height: auto; padding: 9px 11px; resize: vertical; min-height: 96
 .kv dd { margin: 0; color: var(--text); word-break: break-word; }
 
 .btn-danger { color: #fff; }
+
+/* --- Проверка программы по списку компьютеров --- */
+:root { --ok: #30d158; --ok-soft: rgba(48, 209, 88, 0.14); --alert-soft: rgba(255, 69, 58, 0.14); }
+:root[data-theme="light"] { --ok: #1f7a34; --ok-soft: rgba(31, 122, 52, 0.11); --alert-soft: rgba(196, 41, 28, 0.1); }
+
+.check-query { display: flex; gap: 8px; align-items: center; }
+.check-query .inp { flex: 1 1 auto; min-width: 0; }
+.check-query .btn { flex: 0 0 auto; }
+.check-result { display: grid; gap: 8px; }
+.check-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.check-scroll {
+  max-height: 440px; overflow: auto;
+  border: 1px solid var(--hair-strong); border-radius: 10px; background: var(--fill-025);
+}
+.check-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.check-table th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--card-bg); text-align: left; font-weight: 600; font-size: 12px; color: var(--text-2);
+  padding: 8px 10px; border-bottom: 1px solid var(--hair-strong);
+}
+.check-table td { padding: 7px 10px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+.check-table tr:last-child td { border-bottom: none; }
+.check-table tbody tr:hover td { background: var(--fill-04); }
+.check-table .num { width: 1%; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.check-table .mono { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+.check-table .details { color: var(--text-2); word-break: break-word; }
+
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+}
+.badge.st-installed { background: var(--ok-soft); color: var(--ok); }
+.badge.st-missing { background: var(--fill-08); color: var(--text-2); }
+.badge.st-error { background: var(--alert-soft); color: var(--alert); }
+.badge.st-pending { background: var(--accent-soft); color: var(--accent-text); }
+.badge.st-skipped { background: var(--fill-05); color: var(--text-3); }

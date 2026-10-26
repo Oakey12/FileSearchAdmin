@@ -6,6 +6,10 @@ export function CancelOperation() {
   return window['go']['main']['App']['CancelOperation']();
 }
 
+export function CheckApplication(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['CheckApplication'](arg1, arg2, arg3, arg4);
+}
+
 export function CheckUpdate() {
   return window['go']['main']['App']['CheckUpdate']();
 }
@@ -28,6 +32,10 @@ export function FinishEmployees(arg1, arg2, arg3) {
 
 export function FormatSystemInfo(arg1) {
   return window['go']['main']['App']['FormatSystemInfo'](arg1);
+}
+
+export function ImportComputers() {
+  return window['go']['main']['App']['ImportComputers']();
 }
 
 export function ImportServers() {
@@ -64,6 +72,10 @@ export function RunCommand(arg1, arg2, arg3, arg4, arg5) {
 
 export function RunCommandInSession(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['RunCommandInSession'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function SaveComputersExample() {
+  return window['go']['main']['App']['SaveComputersExample']();
 }
 
 export function SaveRemoteFile(arg1, arg2, arg3, arg4, arg5) {
