@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"errors"
+	"fmt"
 	constandstruct "filesearch-admin/internal/constAndStruct"
 	remotefunc "filesearch-admin/internal/remoteFunc"
 	"strings"
@@ -62,7 +63,7 @@ func TestCheckApplicationOnTargetsReportsEveryComputer(t *testing.T) {
 		t.Fatalf("получено результатов %d, ожидалось 3: %#v", len(results), results)
 	}
 	installed := results["10.0.0.1"]
-	if installed.Status != constandstruct.AppCheckInstalled || installed.Summary != "TrueConf Client 8.5" ||
+	if installed.Status != constandstruct.AppCheckInstalled || installed.Summary != "TrueConf Client 8.5 (реестр)" ||
 		installed.Name != "Бухгалтерия" || len(installed.Owners) != 1 || installed.Owners[0] != "Весь компьютер" {
 		t.Fatalf("установленная программа описана неверно: %#v", installed)
 	}
@@ -76,7 +77,7 @@ func TestCheckApplicationOnTargetsReportsEveryComputer(t *testing.T) {
 	}
 
 	summary := journal[len(journal)-1]
-	if !strings.Contains(summary, "установлена — 1, не установлена — 1, ошибок — 1, не проверено — 0") {
+	if !strings.Contains(summary, "установлена — 1, только файлы — 0, не установлена — 1, ошибок — 1, не проверено — 0") {
 		t.Fatalf("итог в журнале неверен: %q", summary)
 	}
 	for _, line := range journal {
@@ -104,5 +105,32 @@ func TestDescribeApplicationCheckNamesComputerOnce(t *testing.T) {
 	line := DescribeApplicationCheck(constandstruct.ApplicationCheck{Name: "10.0.0.5", IP: "10.0.0.5", Status: constandstruct.AppCheckMissing})
 	if line != "10.0.0.5: не установлена." {
 		t.Fatalf("строка журнала: %q", line)
+	}
+}
+
+func TestBuildApplicationCheckSeparatesLeftoversFromInstalled(t *testing.T) {
+	target := constandstruct.Server{Name: "ПК", IP: "10.0.0.1"}
+	leftovers := []constandstruct.ApplicationMatch{
+		{Source: "папка", Name: "DrWeb", Path: `C:\ProgramData\DrWeb`},
+		{Source: "файл", Name: "drweb-uninstall.exe"},
+	}
+	check := BuildApplicationCheck(context.Background(), target, leftovers, nil, nil)
+	if check.Status != constandstruct.AppCheckTraces || check.Summary != "DrWeb (папка)" {
+		t.Fatalf("одни папки и файлы — не «установлена»: %#v", check)
+	}
+
+	installed := append(leftovers, constandstruct.ApplicationMatch{Source: "служба, работает", Name: "Dr.Web Scanning Engine"})
+	check = BuildApplicationCheck(context.Background(), target, installed, nil, nil)
+	if check.Status != constandstruct.AppCheckInstalled || check.Summary != "Dr.Web Scanning Engine (служба, работает)" {
+		t.Fatalf("служба означает установленную программу: %#v", check)
+	}
+}
+
+func TestBuildApplicationCheckNamesCancellationInRussian(t *testing.T) {
+	target := constandstruct.Server{Name: "ПК", IP: "10.0.0.1"}
+	// Одиночная проверка передаёт контекст приложения, он не отменён.
+	check := BuildApplicationCheck(context.Background(), target, nil, nil, fmt.Errorf("этап: %w", context.Canceled))
+	if check.Status != constandstruct.AppCheckError || check.Error != "операция отменена" {
+		t.Fatalf("отмена должна называться по-русски: %#v", check)
 	}
 }

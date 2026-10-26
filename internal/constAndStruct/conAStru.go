@@ -27,8 +27,11 @@ const (
 // Итог проверки одного компьютера в ApplicationCheck.Status.
 const (
 	AppCheckInstalled = "installed"
-	AppCheckMissing   = "missing"
-	AppCheckError     = "error"
+	// AppCheckTraces — найдены только папки или файлы, без записи в реестре,
+	// службы и процесса: возможно, остатки после удаления.
+	AppCheckTraces  = "traces"
+	AppCheckMissing = "missing"
+	AppCheckError   = "error"
 )
 
 type EmployeeProcess struct {

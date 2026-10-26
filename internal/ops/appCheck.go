@@ -3,9 +3,9 @@ package ops
 import (
 	"context"
 	"errors"
-	"fmt"
 	constandstruct "filesearch-admin/internal/constAndStruct"
 	remotefunc "filesearch-admin/internal/remoteFunc"
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -63,10 +63,12 @@ func CheckApplicationOnTargets(
 		if operationCtx.Err() != nil {
 			logLine("Проверка остановлена: " + contextErrorText(operationCtx.Err()))
 		}
-		checked := counts[constandstruct.AppCheckInstalled] + counts[constandstruct.AppCheckMissing] + counts[constandstruct.AppCheckError]
+		checked := counts[constandstruct.AppCheckInstalled] + counts[constandstruct.AppCheckTraces] +
+			counts[constandstruct.AppCheckMissing] + counts[constandstruct.AppCheckError]
 		logLine(fmt.Sprintf(
-			"--- Проверка завершена: установлена — %d, не установлена — %d, ошибок — %d, не проверено — %d ---",
+			"--- Проверка завершена: установлена — %d, только файлы — %d, не установлена — %d, ошибок — %d, не проверено — %d ---",
 			counts[constandstruct.AppCheckInstalled],
+			counts[constandstruct.AppCheckTraces],
 			counts[constandstruct.AppCheckMissing],
 			counts[constandstruct.AppCheckError],
 			len(targets)-checked,
@@ -85,13 +87,24 @@ func checkApplicationOn(
 	target constandstruct.Server,
 	user, password, query string,
 ) constandstruct.ApplicationCheck {
-	check := constandstruct.ApplicationCheck{Name: target.Name, IP: target.IP}
-
 	targetCtx, cancel := context.WithTimeout(ctx, constandstruct.ProgramScanTimeout)
 	defer cancel()
 	found, warnings, err := findApplicationOn(targetCtx, target.IP, user, password, query, nil)
-	check.Warnings = warnings
+	return BuildApplicationCheck(ctx, target, found, warnings, err)
+}
 
+// BuildApplicationCheck сводит ответ сценария поиска к итогу «установлена /
+// только файлы / не установлена / ошибка». Общий для проверки одного ПК и
+// списка. ctx —
+// контекст всей операции: по нему отмена отличается от тайм-аута компьютера.
+func BuildApplicationCheck(
+	ctx context.Context,
+	target constandstruct.Server,
+	found []constandstruct.ApplicationMatch,
+	warnings []string,
+	err error,
+) constandstruct.ApplicationCheck {
+	check := constandstruct.ApplicationCheck{Name: target.Name, IP: target.IP, Warnings: warnings}
 	switch {
 	case err != nil:
 		check.Status = constandstruct.AppCheckError
@@ -100,17 +113,47 @@ func checkApplicationOn(
 		check.Status = constandstruct.AppCheckMissing
 		check.Summary = "Не найдена"
 	default:
-		check.Status = constandstruct.AppCheckInstalled
 		check.Matches = found
 		check.Owners = SummarizeApplicationOwners(found)
-		check.Summary = applicationTitle(found[0])
+		// «Установлена» — только по реестру, службе или запущенному процессу.
+		// Одни папки и файлы — частые остатки после удаления: о них говорим
+		// отдельно, чтобы не выдать их за установленную программу.
+		main, installed := strongApplicationMatch(found)
+		if installed {
+			check.Status = constandstruct.AppCheckInstalled
+		} else {
+			check.Status = constandstruct.AppCheckTraces
+		}
+		check.Summary = applicationTitle(main)
+		if main.Source != "" {
+			check.Summary += " (" + main.Source + ")"
+		}
 	}
 	return check
+}
+
+// strongApplicationMatch возвращает первую находку, которая означает
+// установленную программу (реестр, служба, процесс). Если таких нет — первую
+// находку и false.
+func strongApplicationMatch(found []constandstruct.ApplicationMatch) (constandstruct.ApplicationMatch, bool) {
+	for _, match := range found {
+		for _, prefix := range []string{"реестр", "служба", "запущен"} {
+			if strings.HasPrefix(match.Source, prefix) {
+				return match, true
+			}
+		}
+	}
+	return found[0], false
 }
 
 func checkErrorText(operationCtx context.Context, err error) string {
 	if operationCtx.Err() != nil {
 		return contextErrorText(operationCtx.Err())
+	}
+	// Одиночная проверка получает контекст приложения, который не
+	// отменяется: отмену видно только по самой ошибке.
+	if errors.Is(err, context.Canceled) {
+		return "операция отменена"
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		if stage := remotefunc.ErrorStage(err); stage != "" {
@@ -142,6 +185,8 @@ func DescribeApplicationCheck(check constandstruct.ApplicationCheck) string {
 			text += "; у кого: " + strings.Join(check.Owners, ", ")
 		}
 		return text + "."
+	case constandstruct.AppCheckTraces:
+		return fmt.Sprintf("%s: найдены только файлы — %s; возможно, остатки после удаления.", name, check.Summary)
 	case constandstruct.AppCheckMissing:
 		return name + ": не установлена."
 	default:

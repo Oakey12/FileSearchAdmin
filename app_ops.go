@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	constandstruct "filesearch-admin/internal/constAndStruct"
 	"filesearch-admin/internal/config"
@@ -214,11 +215,17 @@ func (a *App) ScanSystemInfo(ip, user, password string) (constandstruct.SystemIn
 	})
 }
 
-// FindApplication ищет приложение по имени (реестр, процессы, файлы).
-func (a *App) FindApplication(ip, user, password, query string) ([]constandstruct.ApplicationMatch, error) {
-	return runBlocking(a, func(done func([]constandstruct.ApplicationMatch, error)) bool {
+// FindApplication отвечает, установлена ли программа на одном компьютере:
+// реестр, службы, процессы, папки установки и файлы. Ошибка подключения
+// приходит в итоге (Status = "error"), а не отказом вызова: окну нужен один
+// ответ на вопрос «установлена или нет».
+func (a *App) FindApplication(ip, user, password, query string) (constandstruct.ApplicationCheck, error) {
+	return runBlocking(a, func(done func(constandstruct.ApplicationCheck, error)) bool {
+		target := constandstruct.Server{Name: strings.TrimSpace(ip), IP: strings.TrimSpace(ip)}
 		return ops.FindApplication(a.ctx, ip, user, password, query, a.logLine,
-			func(matches []constandstruct.ApplicationMatch, warnings []string, err error) { done(matches, err) })
+			func(matches []constandstruct.ApplicationMatch, warnings []string, err error) {
+				done(ops.BuildApplicationCheck(a.ctx, target, matches, warnings, err), nil)
+			})
 	})
 }
 
