@@ -264,6 +264,7 @@ export namespace constandstruct {
 	    IPAddresses: string[];
 	    Disks: string[];
 	    UserFolders: string[];
+	    RDPConnections: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SystemInfo(source);
@@ -294,6 +295,7 @@ export namespace constandstruct {
 	        this.IPAddresses = source["IPAddresses"];
 	        this.Disks = source["Disks"];
 	        this.UserFolders = source["UserFolders"];
+	        this.RDPConnections = source["RDPConnections"];
 	    }
 	}
 

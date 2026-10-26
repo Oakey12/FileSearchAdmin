@@ -212,6 +212,9 @@ func FormatSystemInfo(info constandstruct.SystemInfo) [][2]string {
 		// Папки каждая со своей строки: на терминальном сервере их десятки, и
 		// склеенные через точку с запятой они нечитаемы.
 		{`Папки C:\Users`, strings.Join(info.UserFolders, "\n")},
+		// Кто и откуда заходит на компьютер по RDP — тоже по строке на пару
+		// «учётная запись — адрес клиента».
+		{fmt.Sprintf("Подключения по RDP (%d дн.)", psscript.RDPHistoryDays), strings.Join(info.RDPConnections, "\n")},
 	}
 
 	filtered := make([][2]string, 0, len(rows))
