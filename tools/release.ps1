@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory)] [string]$Version,
     [string]$Notes = "",
     [string]$PublishDir = "C:\Users\1108\nginx-1.28.3\html-filesearch\filesearch-admin",
