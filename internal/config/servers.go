@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -193,6 +194,9 @@ func readServersCache() ([]constandstruct.Server, string, error) {
 }
 
 func ParseServers(data []byte) ([]constandstruct.Server, error) {
+	// Файл, сохранённый в Windows (Блокнот, Out-File), часто начинается с
+	// UTF-8 BOM — без его удаления json.Unmarshal падает.
+	data = bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))
 	var config serversConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("ошибка JSON: %w", err)
