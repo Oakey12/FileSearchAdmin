@@ -30,6 +30,18 @@ func TestParseServersAcceptsDNSName(t *testing.T) {
 	}
 }
 
+// Файл с UTF-8 BOM (как сохраняет Блокнот/Out-File в Windows) должен читаться.
+func TestParseServersAcceptsUTF8BOM(t *testing.T) {
+	data := append([]byte("\xEF\xBB\xBF"), []byte(`{"servers":[{"name":"Сервер 1","ip":"192.168.20.31"}]}`)...)
+	servers, err := ParseServers(data)
+	if err != nil {
+		t.Fatalf("ParseServers() с BOM error = %v", err)
+	}
+	if len(servers) != 1 || servers[0].IP != "192.168.20.31" {
+		t.Fatalf("ParseServers() = %#v", servers)
+	}
+}
+
 func TestParseServersRejectsInvalidConfiguration(t *testing.T) {
 	tests := []struct {
 		name string
