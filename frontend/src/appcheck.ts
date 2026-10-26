@@ -9,7 +9,7 @@ import { card, actions, button } from './ui'
 import type { Creds } from './creds'
 import { STATUS_LABEL, countRows, detailsText, rowsToTSV, type CheckRow, type RowStatus } from './appcheck-model'
 
-type Filter = 'all' | 'installed' | 'missing' | 'error'
+type Filter = 'all' | 'installed' | 'traces' | 'missing' | 'error'
 
 export class AppCheckCard {
   private computers: Server[] = []
@@ -71,6 +71,7 @@ export class AppCheckCard {
     const filters: [Filter, string][] = [
       ['all', 'Все'],
       ['installed', 'Установлена'],
+      ['traces', 'Только файлы'],
       ['missing', 'Не установлена'],
       ['error', 'Ошибки'],
     ]
@@ -234,6 +235,7 @@ export class AppCheckCard {
       `не установлена: ${counts.missing}`,
       `ошибок: ${counts.error}`,
     ]
+    if (counts.traces > 0) parts.splice(1, 0, `только файлы: ${counts.traces}`)
     if (counts.pending > 0) parts.push(`проверяется: ${counts.pending}`)
     if (counts.skipped > 0) parts.push(`не проверено: ${counts.skipped}`)
     this.summaryEl.textContent = `${parts.join(' · ')}. Всего: ${this.rows.length}.`

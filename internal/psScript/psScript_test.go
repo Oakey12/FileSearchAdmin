@@ -2,6 +2,8 @@ package psscript
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -20,6 +22,7 @@ func TestPsScriptParsesInWindowsPowerShell(t *testing.T) {
 		"command cleanup":    CleanupCommandScript,
 		"installed programs": InstalledProgramsScript,
 		"system info":        SystemInfoScript,
+		"find application":   FindApplicationScript("dr.web"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			command := exec.Command(
@@ -302,4 +305,93 @@ Write-Output "DONE"
 		t.Fatalf("Get-RdpConnections не вернул строк:\n%s", text)
 	}
 	t.Logf("ответ на этой машине:\n%s", text)
+}
+
+// Поиск выполняется на этой машине: запрос с другой пунктуацией и регистром
+// («edge-webview2») должен находить «Microsoft Edge WebView2 Runtime» —
+// так же, как «dr.web» находит «Dr.Web Security Space» и папку DrWeb.
+func TestFindApplicationScriptMatchesIgnoringPunctuation(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("проверка предназначена для Windows PowerShell")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+		"-Command", `[Console]::OutputEncoding=[Text.Encoding]::UTF8; $source=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($source))`)
+	command.Stdin = strings.NewReader(FindApplicationScript("edge-webview2"))
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("сценарий поиска завершился с ошибкой: %v\n%s", err, output)
+	}
+	var sources []string
+	for _, line := range strings.Split(string(output), "\n") {
+		payload, ok := strings.CutPrefix(strings.TrimSpace(line), "APP_MATCH|")
+		if !ok {
+			continue
+		}
+		data, err := base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			t.Fatalf("повреждена запись: %v", err)
+		}
+		var match struct{ Source, Name, Path string }
+		if err := json.Unmarshal(data, &match); err != nil {
+			t.Fatalf("не разобрана запись: %v", err)
+		}
+		sources = append(sources, match.Source+": "+match.Name+" "+match.Path)
+	}
+	if len(sources) == 0 {
+		t.Fatalf("WebView2 не найден — нормализация имён сломана или WebView2 удалён:\n%s", output)
+	}
+	joined := strings.Join(sources, "\n")
+	if !strings.Contains(joined, "реестр: ") {
+		t.Fatalf("WebView2 должен находиться в реестре без учёта пунктуации:\n%s", joined)
+	}
+	t.Logf("найдено:\n%s", joined)
+}
+
+// Правила сравнения проверяются на фиксированных строках, без обращения к
+// реестру: ложное «установлена» хуже, чем «не найдена».
+func TestFindMatchRules(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("проверка предназначена для Windows PowerShell")
+	}
+	cases := []struct {
+		name, query, function, value string
+		want                         bool
+	}{
+		{"точка и регистр", "dr.web", "Test-Match", "Dr.Web Security Space", true},
+		{"слитное имя папки", "dr.web", "Test-PathMatch", `C:\Program Files\DrWeb\dwservice.exe`, true},
+		{"путь службы в кавычках", "dr.web", "Test-PathMatch", `"C:\Program Files\DrWeb\dwservice.exe" -k`, true},
+		{"кириллица", "1С:Предприятие", "Test-Match", "1С:Предприятие 8 (8.3.24)", true},
+		{"GUID Office не 1c", "1c", "Test-GuidName", "{90160000-0011-0000-1000-0000000FF1CE}", true},
+		{"короткий запрос не ищется по путям", "1c", "Test-PathMatch", `C:\Program Files\1cv8\bin\1cv8.exe`, false},
+		{"путь не склеивается целиком", "system32svchost", "Test-PathMatch", `C:\Windows\system32\svchost.exe -k netsvcs`, false},
+		{"папка-GUID пропускается", "0ff1ce", "Test-PathMatch", `C:\ProgramData\Package Cache\{90160000-0011-0000-1000-0000000FF1CE}`, false},
+		{"пустое значение", "dr.web", "Test-Match", "", false},
+		{"латинская 1c находит кириллическую 1С", "1c", "Test-Match", "1С:Предприятие 8 (8.3.24.1342)", true},
+		{"кириллическая 1с находит латинскую 1C", "1с", "Test-Match", "1C:Enterprise 8", true},
+		{"общие части пути не считаются", "windows", "Test-PathMatch", `C:\Windows\system32\svchost.exe -k netsvcs`, false},
+		{"аргументы службы не часть пути", "netsvcs", "Test-PathMatch", `C:\Windows\system32\svchost.exe -k netsvcs`, false},
+		{"путь без кавычек до .exe", "dwservice", "Test-PathMatch", `C:\Program Files\DrWeb\dwservice.exe --daemon`, true},
+		{"код Inno Setup", "1c", "Test-GuidName", "{A1B2C3D4-0000-1111-2222-333344445555}_is1", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			script := findMatchFunctions + `
+$queryKey = Get-MatchKey "` + tc.query + `"
+if (` + tc.function + ` '` + strings.ReplaceAll(tc.value, "'", "''") + `') { "MATCH" } else { "NO" }
+`
+			command := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+				"-Command", `[Console]::InputEncoding=[Text.Encoding]::UTF8; [Console]::OutputEncoding=[Text.Encoding]::UTF8; $source=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($source))`)
+			command.Stdin = strings.NewReader(script)
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("PowerShell: %v\n%s", err, output)
+			}
+			got := strings.TrimSpace(string(output)) == "MATCH"
+			if got != tc.want {
+				t.Fatalf("%s(%q) при запросе %q = %v, ожидалось %v\n%s", tc.function, tc.value, tc.query, got, tc.want, output)
+			}
+		})
+	}
 }

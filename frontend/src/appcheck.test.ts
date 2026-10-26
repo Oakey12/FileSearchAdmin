@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countRows, detailsText, rowsToTSV, type CheckRow } from './appcheck-model'
+import { countRows, describeMatch, detailsText, rowsToTSV, verdictText, type CheckRow } from './appcheck-model'
 import type { ApplicationCheck } from './go'
 
 function check(partial: Partial<ApplicationCheck>): ApplicationCheck {
@@ -45,5 +45,30 @@ describe('проверка по списку компьютеров', () => {
     expect(counts.installed).toBe(2)
     expect(counts.pending).toBe(1)
     expect(counts.error).toBe(0)
+  })
+})
+
+describe('ответ по одному компьютеру', () => {
+  it('говорит прямо: установлена, не установлена или ошибка', () => {
+    const base = { name: '192.168.140.72', ip: '192.168.140.72' }
+    expect(verdictText(check({ ...base, status: 'installed', summary: 'Dr.Web Security Space 12.0 (реестр)' }), 'dr.web'))
+      .toBe('«dr.web» на 192.168.140.72: установлена — Dr.Web Security Space 12.0 (реестр)')
+    expect(verdictText(check({ ...base, status: 'missing' }), 'dr.web')).toBe('«dr.web» на 192.168.140.72: не установлена')
+    expect(verdictText(check({ ...base, status: 'error', error: 'RPC недоступен' }), 'dr.web')).toContain('проверить не удалось — RPC недоступен')
+  })
+
+  it('находка показывает источник, владельца и путь', () => {
+    expect(describeMatch({ Source: 'служба, работает', Owner: 'Весь компьютер', Name: 'Dr.Web Scanning Engine', Version: '', Path: 'C:\\Program Files\\DrWeb\\dwengine.exe' }))
+      .toBe('служба, работает: Dr.Web Scanning Engine — Весь компьютер — C:\\Program Files\\DrWeb\\dwengine.exe')
+    expect(describeMatch({ Source: 'реестр', Owner: '', Name: 'Dr.Web', Version: '12.0', Path: '' })).toBe('реестр: Dr.Web 12.0')
+  })
+})
+
+describe('только файлы', () => {
+  it('не выдаётся за установленную программу', () => {
+    const traces = check({ name: 'ПК', ip: '10.0.0.9', status: 'traces', summary: 'DrWeb (папка)' })
+    expect(verdictText(traces, 'dr.web')).toBe('«dr.web» на 10.0.0.9: найдены только файлы — DrWeb (папка); похоже на остатки после удаления')
+    expect(detailsText({ name: 'ПК', ip: '10.0.0.9', status: 'traces', check: traces })).toContain('остатки после удаления')
+    expect(countRows([{ name: 'ПК', ip: '10.0.0.9', status: 'traces' }]).traces).toBe(1)
   })
 })

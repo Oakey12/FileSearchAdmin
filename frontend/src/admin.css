@@ -283,7 +283,7 @@ textarea.inp { height: auto; padding: 9px 11px; resize: vertical; min-height: 96
 :root[data-theme="light"] { --ok: #1f7a34; --ok-soft: rgba(31, 122, 52, 0.11); --alert-soft: rgba(196, 41, 28, 0.1); }
 
 .check-query { display: flex; gap: 8px; align-items: center; }
-.check-query .inp { flex: 1 1 auto; min-width: 0; }
+.check-query .inp, .check-query .search-box { flex: 1 1 auto; min-width: 0; }
 .check-query .btn { flex: 0 0 auto; }
 .check-result { display: grid; gap: 8px; }
 .check-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
@@ -309,7 +309,21 @@ textarea.inp { height: auto; padding: 9px 11px; resize: vertical; min-height: 96
   font-size: 12px; font-weight: 500; white-space: nowrap;
 }
 .badge.st-installed { background: var(--ok-soft); color: var(--ok); }
+.badge.st-traces { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 .badge.st-missing { background: var(--fill-08); color: var(--text-2); }
 .badge.st-error { background: var(--alert-soft); color: var(--alert); }
 .badge.st-pending { background: var(--accent-soft); color: var(--accent-text); }
 .badge.st-skipped { background: var(--fill-05); color: var(--text-3); }
+
+/* ответ «установлена ли программа» на одном компьютере */
+.verdict {
+  display: grid; gap: 6px; padding: 11px 12px;
+  border: 1px solid var(--hair-strong); border-radius: 10px; background: var(--fill-025);
+}
+.verdict-head { display: flex; align-items: baseline; gap: 10px; }
+.verdict-text { font-weight: 500; word-break: break-word; }
+.verdict-list {
+  margin: 0; padding-left: 18px; max-height: 220px; overflow-y: auto;
+  font-size: 12.5px; color: var(--text-2);
+}
+.verdict-list li { word-break: break-word; padding: 1px 0; }

@@ -57,7 +57,7 @@ export function onEmployees(cb: (list: EmployeeProcess[]) => void): () => void {
 export interface ApplicationCheck {
   name: string
   ip: string
-  status: 'installed' | 'missing' | 'error'
+  status: 'installed' | 'traces' | 'missing' | 'error'
   summary: string
   owners: string[] | null
   matches: ApplicationMatch[] | null
