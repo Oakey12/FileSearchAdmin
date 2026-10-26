@@ -13,6 +13,7 @@ type Filter = 'all' | 'installed' | 'missing' | 'error'
 
 export class AppCheckCard {
   private computers: Server[] = []
+  private duplicates = 0
   private rows: CheckRow[] = []
   private byIP = new Map<string, CheckRow>()
   private running = false
@@ -116,18 +117,33 @@ export class AppCheckCard {
   private renderSource(): void {
     this.sourceEl.textContent =
       this.computers.length > 0
-        ? `Загружено компьютеров: ${this.computers.length}.`
-        : 'JSON не загружен — будут проверены серверы, отмеченные в подключении (или IP, введённый вручную).'
+        ? `Загружено компьютеров: ${this.computers.length}.` +
+          (this.duplicates > 0 ? ` Повторы адресов пропущены: ${this.duplicates}.` : '') +
+          ' Чтобы проверить другой список — снова «Загрузить JSON…».'
+        :'JSON не загружен — будут проверены серверы, отмеченные в подключении (или IP, введённый вручную).'
   }
 
   private async load(): Promise<void> {
     try {
-      const computers = await Go.ImportComputers()
-      if (computers && computers.length > 0) {
-        this.computers = computers
-        this.renderSource()
-        toast(`Загружено компьютеров: ${computers.length}.`)
+      const list = await Go.ImportComputers()
+      const computers = list?.computers ?? []
+      if (computers.length === 0) return // выбор отменён
+      // Новый список заменяет прежний целиком. Таблица прошлой проверки
+      // относится к старому списку — убираем её, если проверка не идёт.
+      this.computers = computers
+      this.duplicates = list.duplicates ?? 0
+      if (!this.running) {
+        this.rows = []
+        this.byIP = new Map()
+        this.tableWrap.hidden = true
+        this.renderBody()
       }
+      this.renderSource()
+      toast(
+        this.duplicates > 0
+          ? `Загружено компьютеров: ${computers.length}. Повторы адресов пропущены: ${this.duplicates}.`
+          : `Загружено компьютеров: ${computers.length}.`,
+      )
     } catch (err) {
       toast(String(err))
     }
