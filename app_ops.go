@@ -41,8 +41,8 @@ func (a *App) NotifyTemplates() []constandstruct.MessageTemplate {
 }
 
 // ImportServers открывает диалог выбора JSON-файла со списком серверов, проверяет
-// его (формат сервера обновлений или списка компьютеров: уникальные IP/DNS-имена)
-// и возвращает список. Пустой список (и nil-ошибка) — пользователь отменил выбор.
+// его (тот же формат, что и у сервера обновлений: уникальные IP/DNS-имена) и
+// возвращает список. Пустой список (и nil-ошибка) — пользователь отменил выбор.
 func (a *App) ImportServers() ([]constandstruct.Server, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Выберите JSON со списком серверов",
@@ -58,9 +58,7 @@ func (a *App) ImportServers() ([]constandstruct.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("не удалось прочитать файл: %w", err)
 	}
-	// Тот же разбор, что у проверки по списку компьютеров: один файл
-	// ({"servers"}, {"computers"} или массив адресов) подходит обеим кнопкам.
-	servers, err := config.ParseComputers(data)
+	servers, err := config.ParseServers(data)
 	if err != nil {
 		return nil, err
 	}
