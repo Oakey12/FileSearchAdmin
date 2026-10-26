@@ -4,8 +4,11 @@ package psscript
 // отдаёт одну Base64-запись со сводкой для системного администратора. Данные
 // берутся из CIM: имя и домен, версия Windows, процессор, память, диски и
 // сетевые адреса. Тяжёлых классов вроде Win32_Product здесь нет, поэтому сбор
-// укладывается в секунды.
-const SystemInfoScript = `
+// укладывается в секунды. Подключения по RDP читаются из журналов событий —
+// см. rdpConnectionsFunction.
+const SystemInfoScript = rdpConnectionsFunction + systemInfoBody
+
+const systemInfoBody = `
 $ErrorActionPreference = "Stop"
 
 function Limit-Text([object]$Value) {
@@ -195,6 +198,16 @@ try {
     Write-InfoWarning "Папки пользователей" $_.Exception.Message
 }
 
+# Кто и откуда подключается к удалённому рабочему столу. Журналы событий
+# читаются быстро, но сбой здесь не должен лишать администратора остальных
+# сведений — поэтому отдельный try.
+$rdpConnections = @()
+try {
+    $rdpConnections = @(Get-RdpConnections 14)
+} catch {
+    Write-InfoWarning "Подключения по RDP" $_.Exception.Message
+}
+
 $record = [PSCustomObject]@{
     ComputerName = $computerName
     Domain = $domain
@@ -219,6 +232,7 @@ $record = [PSCustomObject]@{
     IPAddresses = $addresses
     Disks = $disks
     UserFolders = $userFolders
+    RDPConnections = $rdpConnections
 }
 
 $json = ConvertTo-Json -InputObject $record -Compress -Depth 3

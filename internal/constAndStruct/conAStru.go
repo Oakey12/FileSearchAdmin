@@ -125,6 +125,9 @@ type SystemInfo struct {
 	IPAddresses       []string `json:"IPAddresses"`
 	Disks             []string `json:"Disks"`
 	UserFolders       []string `json:"UserFolders"`
+	// RDPConnections — кто и откуда подключался по RDP: по строке на пару
+	// «учётная запись — адрес клиента» с временем последнего подключения.
+	RDPConnections []string `json:"RDPConnections"`
 }
 
 type RemoteFolderResult struct {

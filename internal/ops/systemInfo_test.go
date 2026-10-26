@@ -135,3 +135,26 @@ func TestFormatSystemInfoHidesFoldersWhenEmpty(t *testing.T) {
 		}
 	}
 }
+
+func TestFormatSystemInfoListsRDPConnections(t *testing.T) {
+	line := encodeSystemInfoLine("COMMAND_LINE|SYSTEM_INFO|", `{"ComputerName":"TERM25",`+
+		`"RDPConnections":["CORP\\ivanov с 192.168.150.84 (PC-IVANOV) — последнее 26.10.2026 14:02, подключений: 5",`+
+		`"CORP\\petrov с 192.168.140.58 — последнее 25.10.2026 09:15, подключений: 1"]}`)
+	info, _, err := parseSystemInfo([]string{line})
+	if err != nil {
+		t.Fatalf("parseSystemInfo() вернул ошибку: %v", err)
+	}
+
+	var rdp string
+	for _, row := range FormatSystemInfo(info) {
+		if strings.HasPrefix(row[0], "Подключения по RDP") {
+			if row[0] != "Подключения по RDP (14 дн.)" {
+				t.Fatalf("подпись поля: %q", row[0])
+			}
+			rdp = row[1]
+		}
+	}
+	if !strings.Contains(rdp, `CORP\ivanov с 192.168.150.84 (PC-IVANOV)`) || !strings.Contains(rdp, "\nCORP\\petrov") {
+		t.Fatalf("подключения по RDP показаны неверно: %q", rdp)
+	}
+}

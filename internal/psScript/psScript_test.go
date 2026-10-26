@@ -2,6 +2,7 @@ package psscript
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -18,6 +19,7 @@ func TestPsScriptParsesInWindowsPowerShell(t *testing.T) {
 		"server command":     CommandScript,
 		"command cleanup":    CleanupCommandScript,
 		"installed programs": InstalledProgramsScript,
+		"system info":        SystemInfoScript,
 	} {
 		t.Run(name, func(t *testing.T) {
 			command := exec.Command(
@@ -251,4 +253,53 @@ func TestCommandScriptHandlesMissingOptionalRegistryValues(t *testing.T) {
 	if outputFlag < 0 || statusOK < 0 || outputFlag > statusOK {
 		t.Fatal("OutputTruncated должен быть опубликован до статуса OK")
 	}
+}
+
+func TestSystemInfoScriptAsksForConfiguredRDPHistory(t *testing.T) {
+	call := fmt.Sprintf("Get-RdpConnections %d", RDPHistoryDays)
+	if !strings.Contains(SystemInfoScript, call) {
+		t.Fatalf("SystemInfoScript должен вызывать %q — подпись поля берёт срок из RDPHistoryDays", call)
+	}
+	for _, required := range []string{
+		"TerminalServices-LocalSessionManager/Operational",
+		"TerminalServices-RemoteConnectionManager/Operational",
+		"RDPConnections = $rdpConnections",
+	} {
+		if !strings.Contains(SystemInfoScript, required) {
+			t.Fatalf("SystemInfoScript должен содержать %q", required)
+		}
+	}
+}
+
+// Функция чтения журналов RDP выполняется на этой машине: журналы есть на
+// любой Windows, и ответ должен прийти строками без исключений — даже если
+// подключений не было или журнал недоступен.
+func TestRDPConnectionsFunctionRunsLocally(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("проверка предназначена для Windows PowerShell")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	helpers := `
+$ErrorActionPreference = "Stop"
+function Limit-Text([object]$Value) { if ($null -eq $Value) { return "" }; return ([string]$Value).Trim() }
+function Format-LocalTime([object]$Value) { return ([DateTime]$Value).ToString("dd.MM.yyyy HH:mm") }
+function Write-InfoWarning([string]$Stage, [string]$Message) { Write-Output ("WARN|" + $Stage + "|" + $Message) }
+`
+	script := helpers + rdpConnectionsFunction + `
+foreach ($line in @(Get-RdpConnections 14)) { Write-Output ("RDP|" + $line) }
+Write-Output "DONE"
+`
+	command := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+		"-Command", `[Console]::OutputEncoding=[Text.Encoding]::UTF8; $source=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create($source))`)
+	command.Stdin = strings.NewReader(script)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Get-RdpConnections завершился с ошибкой: %v\n%s", err, output)
+	}
+	text := string(output)
+	if !strings.Contains(text, "DONE") || !strings.Contains(text, "RDP|") {
+		t.Fatalf("Get-RdpConnections не вернул строк:\n%s", text)
+	}
+	t.Logf("ответ на этой машине:\n%s", text)
 }
