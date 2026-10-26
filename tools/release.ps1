@@ -4,7 +4,10 @@ param(
     [string]$PublishDir = "C:\Users\1108\nginx-1.28.3\html-filesearch\filesearch-admin",
     # Пересобрать интерфейс через npm. Нужен доступ к registry.npmjs.org.
     # Без ключа берётся готовый frontend/dist из репозитория.
-    [switch]$BuildFrontend
+    [switch]$BuildFrontend,
+    # Пропустить проверки git (чистота дерева, отставание от origin/main).
+    # Для CI: раннер и так делает чистый checkout нужного коммита/тега.
+    [switch]$SkipGitChecks
 )
 $ErrorActionPreference = "Stop"
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Версия должна быть вида 1.2.3" }
@@ -29,18 +32,20 @@ if (-not $BuildFrontend) {
 
 Push-Location $root
 try {
-    $dirty = git diff --name-only HEAD
-    if ($dirty) {
-        throw ("В $root есть изменённые файлы, сборка взяла бы не тот код:`n" + ($dirty -join "`n") +
-            "`nЕсли в списке только frontend/wailsjs, go.mod или go.sum — это следы прошлой сборки:" +
-            "`n  git checkout -- frontend/wailsjs go.mod go.sum`n  git pull`nи запустите выпуск снова.")
-    }
-    git fetch -q origin
-    if ($LASTEXITCODE) {
-        Write-Warning "Не удалось связаться с GitHub — не проверено, что код свежий"
-    } else {
-        $behind = [int](git rev-list --count HEAD..origin/main)
-        if ($behind -gt 0) { throw "Код отстаёт от GitHub на $behind коммит(а). Выполните git pull и запустите выпуск снова." }
+    if (-not $SkipGitChecks) {
+        $dirty = git diff --name-only HEAD
+        if ($dirty) {
+            throw ("В $root есть изменённые файлы, сборка взяла бы не тот код:`n" + ($dirty -join "`n") +
+                "`nЕсли в списке только frontend/wailsjs, go.mod или go.sum — это следы прошлой сборки:" +
+                "`n  git checkout -- frontend/wailsjs go.mod go.sum`n  git pull`nи запустите выпуск снова.")
+        }
+        git fetch -q origin
+        if ($LASTEXITCODE) {
+            Write-Warning "Не удалось связаться с GitHub — не проверено, что код свежий"
+        } else {
+            $behind = [int](git rev-list --count HEAD..origin/main)
+            if ($behind -gt 0) { throw "Код отстаёт от GitHub на $behind коммит(а). Выполните git pull и запустите выпуск снова." }
+        }
     }
     Write-Host ("Собирается коммит: " + (git log -1 --format="%h %s"))
 

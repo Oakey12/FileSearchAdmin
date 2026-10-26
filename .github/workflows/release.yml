@@ -1,0 +1,46 @@
+name: Release FileSearchAdmin
+
+# Выпуск новой версии: публикует exe + latest.json в каталог Nginx, откуда
+# приложение берёт обновления. Запускается двумя способами:
+#   1) пуш тега вида v1.2.3   →  git tag v1.2.3 && git push origin v1.2.3
+#   2) вручную из вкладки Actions (workflow_dispatch) с вводом версии
+#
+# Требует self-hosted раннера на Nginx-сервере (192.168.150.100) с метками
+# [self-hosted, windows]. На раннере должны быть в PATH: git, go (1.25+),
+# wails (go install github.com/wailsapp/wails/v2/cmd/wails@latest).
+# Node.js НЕ нужен — frontend/dist лежит в репозитории.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия в формате 1.2.3'
+        required: true
+
+jobs:
+  release:
+    runs-on: [self-hosted, windows]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Определить версию
+        id: ver
+        shell: powershell
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $v = '${{ github.event.inputs.version }}'
+          } else {
+            $v = '${{ github.ref_name }}'.TrimStart('v')
+          }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Неверная версия: $v (нужно 1.2.3)" }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Сборка и публикация
+        shell: powershell
+        run: |
+          .\tools\release.ps1 -Version ${{ steps.ver.outputs.version }} -Notes "Release ${{ steps.ver.outputs.version }}" -SkipGitChecks
