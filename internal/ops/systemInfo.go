@@ -46,50 +46,103 @@ func ScanSystemInfo(
 
 	go func() {
 		defer finishOperation()
-		operationCtx, cancel := context.WithTimeout(operationBaseCtx, constandstruct.ProgramScanTimeout)
-		defer cancel()
-
 		target := constandstruct.Server{Name: "Сведения о системе", IP: targetIP}
-		logLine(fmt.Sprintf("=== Сбор сведений о системе на %s ===", targetIP))
-		finishStatus := startRemoteStatus(target, constandstruct.ProgramScanTimeout, logLine)
-
-		lines, runErr := remotefunc.RunRemoteScriptWithOutputLimitAndProgress(
-			operationCtx,
-			targetIP,
-			username,
-			password,
-			psscript.SystemInfoScript,
-			remotefunc.MaxRemoteOutputCharacters,
-			remoteProgressLogger(target, logLine),
-		)
-
-		info, warnings, parseErr := parseSystemInfo(lines)
-		resultErr := runErr
-		if resultErr == nil {
-			if text := remoteError(lines); text != "" {
-				resultErr = fmt.Errorf("%s", text)
-			} else {
-				resultErr = parseErr
-			}
-		}
-		finishStatus(resultErr)
-
-		if resultErr != nil {
-			logLine("Сведения о системе: " + resultErr.Error())
-		} else {
-			logLine(fmt.Sprintf(
-				"Сведения о системе получены: %s; предупреждений: %d.",
-				describeSystemInfoTarget(info, targetIP),
-				len(warnings),
-			))
-		}
-		for _, warning := range warnings {
-			logLine("Сведения о системе: предупреждение: " + warning)
-		}
+		info, warnings, resultErr := scanSystemInfoOn(operationBaseCtx, target, username, password, logLine)
 		logLine("--- Сбор сведений о системе завершён ---")
-
 		if onComplete != nil {
 			onComplete(info, warnings, resultErr)
+		}
+	}()
+	return true
+}
+
+// scanSystemInfoOn собирает сведения об одном компьютере (без beginOperation,
+// со своим тайм-аутом на компьютер) — общее для одиночного сбора и сбора по
+// списку. Логирует по строке на компьютер.
+func scanSystemInfoOn(
+	ctx context.Context,
+	target constandstruct.Server,
+	username, password string,
+	logLine func(string),
+) (constandstruct.SystemInfo, []string, error) {
+	targetCtx, cancel := context.WithTimeout(ctx, constandstruct.ProgramScanTimeout)
+	defer cancel()
+
+	logLine(fmt.Sprintf("=== Сбор сведений о системе на %s ===", target.IP))
+	finishStatus := startRemoteStatus(target, constandstruct.ProgramScanTimeout, logLine)
+
+	lines, runErr := remotefunc.RunRemoteScriptWithOutputLimitAndProgress(
+		targetCtx, target.IP, username, password,
+		psscript.SystemInfoScript, remotefunc.MaxRemoteOutputCharacters,
+		remoteProgressLogger(target, logLine),
+	)
+
+	info, warnings, parseErr := parseSystemInfo(lines)
+	resultErr := runErr
+	if resultErr == nil {
+		if text := remoteError(lines); text != "" {
+			resultErr = fmt.Errorf("%s", text)
+		} else {
+			resultErr = parseErr
+		}
+	}
+	finishStatus(resultErr)
+
+	if resultErr != nil {
+		logLine(fmt.Sprintf("%s: сведения о системе: %s", target.IP, resultErr.Error()))
+	} else {
+		logLine(fmt.Sprintf("%s: сведения получены: %s; предупреждений: %d.",
+			target.IP, describeSystemInfoTarget(info, target.IP), len(warnings)))
+	}
+	for _, warning := range warnings {
+		logLine(fmt.Sprintf("%s: предупреждение: %s", target.IP, warning))
+	}
+	return info, warnings, resultErr
+}
+
+// ScanSystemInfoOnTargets собирает сведения о системе с каждого компьютера
+// списка параллельно. Ответ каждого уходит в onResult сразу, onDone — один раз
+// в конце (в т.ч. после отмены). false — сбор не начался (причина в журнале).
+func ScanSystemInfoOnTargets(
+	ctx context.Context,
+	targets []constandstruct.Server,
+	user, password string,
+	logLine func(string),
+	onResult func(constandstruct.SystemInfoResult),
+	onDone func(),
+) bool {
+	if len(targets) == 0 {
+		logLine("Сведения о системе: выберите серверы или введите IP вручную.")
+		return false
+	}
+	user, password, ok := validateCredentials(user, password, logLine)
+	if !ok {
+		return false
+	}
+	operationCtx, started := beginOperation(ctx, logLine)
+	if !started {
+		return false
+	}
+
+	go func() {
+		defer finishOperation()
+		logLine(fmt.Sprintf("=== Сбор сведений о системе: компьютеров %d ===", len(targets)))
+		runTargetsLimit(operationCtx, targets, constandstruct.MaxParallelSystemInfo, func(target constandstruct.Server) {
+			info, _, err := scanSystemInfoOn(operationCtx, target, user, password, logLine)
+			result := constandstruct.SystemInfoResult{Name: target.Name, IP: target.IP, Info: info}
+			if err != nil {
+				result.Error = checkErrorText(operationCtx, err)
+			}
+			if onResult != nil {
+				onResult(result)
+			}
+		})
+		if operationCtx.Err() != nil {
+			logLine("Сбор остановлен: " + contextErrorText(operationCtx.Err()))
+		}
+		logLine("--- Сбор сведений о системе завершён ---")
+		if onDone != nil {
+			onDone()
 		}
 	}()
 	return true

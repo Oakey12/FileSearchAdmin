@@ -22,6 +22,10 @@ const (
 	// Проверка программы по списку компьютеров только читает реестр и диск,
 	// поэтому её можно вести шире обычных операций: список бывает в сотни ПК.
 	MaxParallelAppChecks = 8
+
+	// Сбор сведений о системе по списку: тяжелее проверки программ (полный
+	// набор WMI-запросов), поэтому параллелизм умереннее.
+	MaxParallelSystemInfo = 4
 )
 
 // Итог проверки одного компьютера в ApplicationCheck.Status.
@@ -131,6 +135,15 @@ type SystemInfo struct {
 	// RDPConnections — кто и откуда подключался по RDP: по строке на пару
 	// «учётная запись — адрес клиента» с временем последнего подключения.
 	RDPConnections []string `json:"RDPConnections"`
+}
+
+// SystemInfoResult — сведения одного компьютера при сборе по списку. Error не
+// пуст, если компьютер не ответил; тогда Info пустая.
+type SystemInfoResult struct {
+	Name  string     `json:"name"`
+	IP    string     `json:"ip"`
+	Info  SystemInfo `json:"info"`
+	Error string     `json:"error"`
 }
 
 type RemoteFolderResult struct {

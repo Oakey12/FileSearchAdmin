@@ -73,6 +73,23 @@ export function onAppCheckDone(cb: () => void): () => void {
   return safeOn('appcheck:done', () => cb())
 }
 
+/** Сведения о системе одного компьютера при сборе по списку. Приходит только
+ *  событием, поэтому в сгенерированных моделях его нет. */
+export interface SystemInfoResult {
+  name: string
+  ip: string
+  info: SystemInfo
+  error: string
+}
+
+export function onSysInfoResult(cb: (result: SystemInfoResult) => void): () => void {
+  return safeOn('sysinfo:result', (result) => cb(result as SystemInfoResult))
+}
+
+export function onSysInfoDone(cb: () => void): () => void {
+  return safeOn('sysinfo:done', () => cb())
+}
+
 export function onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void {
   return safeOn('update:available', (info) => cb(info as UpdateInfo))
 }
