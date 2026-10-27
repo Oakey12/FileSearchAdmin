@@ -28,6 +28,69 @@ v2.16** (Go + WebView2, интерфейс на TypeScript). Удалённые 
 
 ---
 
+## Команды деплоя (шпаргалка)
+
+Версия берётся из тега/флага `-Version` (подставляется в `-ldflags`), в коде её
+править не нужно. Детали — разделы 3–5.
+
+### A. Первичный деплой «с нуля» (один раз, на сервере Nginx)
+
+```powershell
+# 1. Настроить Nginx под порт 1213 (создаёт каталог, servers.json, блок конфига)
+powershell -ExecutionPolicy Bypass -File .\tools\nginx-setup.ps1
+# 2. Добавить в nginx.conf строку `include filesearch-admin.conf;` (скрипт подскажет),
+#    затем применить и открыть порт:
+cd 'C:\Users\1108\nginx-1.28.3'            # <NGINX> — путь установки nginx
+.\nginx.exe -t
+.\nginx.exe -s reload
+New-NetFirewallRule -DisplayName "Nginx FileSearchAdmin 1213" -Direction Inbound -Protocol TCP -LocalPort 1213 -Action Allow
+# 3. Первый выпуск приложения (из корня репозитория, нужны Go + Wails):
+powershell -ExecutionPolicy Bypass -File .\tools\release.ps1 -Version 1.0.0 -Notes "Первый релиз"
+# 4. Проверка:
+Invoke-WebRequest http://192.168.150.100:1213/servers.json -UseBasicParsing
+Invoke-WebRequest http://192.168.150.100:1213/latest.json  -UseBasicParsing
+```
+
+### B. Обычный деплой новой версии — через CI (рекомендуется)
+
+С машины разработки. Self-hosted раннер на сервере сам соберёт и опубликует.
+
+```powershell
+git add -A
+git commit -m "релиз 1.0.1: что изменилось"
+git push origin main
+git tag v1.0.1
+git push origin v1.0.1
+# дальше workflow .github/workflows/release.yml собирает и публикует сам;
+# ход — на GitHub во вкладке Actions.
+```
+
+### C. Прямой деплой без CI (на сервере или машине с Go + Wails)
+
+```powershell
+cd C:\Users\1108\FS\FileSearchAdmin     # корень репозитория
+git pull
+powershell -ExecutionPolicy Bypass -File .\tools\release.ps1 -Version 1.0.1 -Notes "что изменилось"
+```
+
+Если каталог Nginx нестандартный — добавьте `-PublishDir '<NGINX>\html-filesearch-admin'`.
+
+### D. Откат на прошлую версию
+
+Пере-выпустить предыдущий тег (перезапишет `latest.json` на старую версию):
+
+```powershell
+git checkout v1.0.0
+powershell -ExecutionPolicy Bypass -File .\tools\release.ps1 -Version 1.0.0 -Notes "Откат" -SkipGitChecks
+git checkout main
+```
+
+> У пользователей уже установленная новая версия сама не откатится (приложение
+> обновляется только на бóльшую версию). Чтобы вернуть всех на старую — поднимите
+> номер: соберите старый код под новой версией, например `-Version 1.0.2`.
+
+---
+
 ## 2. Сервер Nginx: где работает и что уже крутится
 
 Проверено по сети. Сервер — **192.168.150.100**:
