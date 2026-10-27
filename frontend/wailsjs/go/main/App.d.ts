@@ -51,6 +51,8 @@ export function ScanPrograms(arg1:string,arg2:string,arg3:string):Promise<Array<
 
 export function ScanSystemInfo(arg1:string,arg2:string,arg3:string):Promise<constandstruct.SystemInfo>;
 
+export function ScanSystemInfoAll(arg1:Array<constandstruct.Server>,arg2:string,arg3:string):Promise<boolean>;
+
 export function ScanUsers(arg1:string,arg2:string,arg3:string):Promise<Array<constandstruct.RemoteUser>>;
 
 export function SearchProcesses(arg1:Array<constandstruct.Server>,arg2:string,arg3:string):Promise<void>;

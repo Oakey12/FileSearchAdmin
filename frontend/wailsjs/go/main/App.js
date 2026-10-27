@@ -98,6 +98,10 @@ export function ScanSystemInfo(arg1, arg2, arg3) {
   return window['go']['main']['App']['ScanSystemInfo'](arg1, arg2, arg3);
 }
 
+export function ScanSystemInfoAll(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ScanSystemInfoAll'](arg1, arg2, arg3);
+}
+
 export function ScanUsers(arg1, arg2, arg3) {
   return window['go']['main']['App']['ScanUsers'](arg1, arg2, arg3);
 }
