@@ -210,11 +210,12 @@ func ParseServers(data []byte) ([]constandstruct.Server, error) {
 	for index, server := range config.Servers {
 		server.Name = strings.TrimSpace(server.Name)
 		server.IP = strings.TrimSpace(server.IP)
-		if server.Name == "" {
-			return nil, fmt.Errorf("servers[%d]: не указано имя", index)
-		}
 		if net.ParseIP(server.IP) == nil && !validHostname(server.IP) {
 			return nil, fmt.Errorf("servers[%d]: некорректный IP-адрес или DNS-имя %q", index, server.IP)
+		}
+		// Имя необязательно: известен только адрес — показываем его как имя.
+		if server.Name == "" {
+			server.Name = server.IP
 		}
 		key := strings.ToLower(server.IP)
 		if _, exists := seenAddresses[key]; exists {

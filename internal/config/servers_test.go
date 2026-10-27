@@ -30,6 +30,17 @@ func TestParseServersAcceptsDNSName(t *testing.T) {
 	}
 }
 
+// Если имя не указано (известен только IP) — именем становится адрес.
+func TestParseServersNameOptional(t *testing.T) {
+	servers, err := ParseServers([]byte(`{"servers":[{"ip":"192.168.20.31"},{"name":"","ip":"192.168.20.32"}]}`))
+	if err != nil {
+		t.Fatalf("ParseServers() error = %v", err)
+	}
+	if len(servers) != 2 || servers[0].Name != "192.168.20.31" || servers[1].Name != "192.168.20.32" {
+		t.Fatalf("ParseServers() = %#v", servers)
+	}
+}
+
 // Файл с UTF-8 BOM (как сохраняет Блокнот/Out-File в Windows) должен читаться.
 func TestParseServersAcceptsUTF8BOM(t *testing.T) {
 	data := append([]byte("\xEF\xBB\xBF"), []byte(`{"servers":[{"name":"Сервер 1","ip":"192.168.20.31"}]}`)...)
