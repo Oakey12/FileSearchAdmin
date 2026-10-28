@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseServers(t *testing.T) {
-	servers, err := ParseServers([]byte(`{
+	servers, _, err := ParseServers([]byte(`{
 		"servers": [
 			{"name": "Сервер 1", "ip": "192.168.20.31"},
 			{"name": "Сервер 2", "ip": "192.168.20.30"}
@@ -21,7 +21,7 @@ func TestParseServers(t *testing.T) {
 }
 
 func TestParseServersAcceptsDNSName(t *testing.T) {
-	servers, err := ParseServers([]byte(`{"servers":[{"name":"Сервер","ip":"app-01.example.local"}]}`))
+	servers, _, err := ParseServers([]byte(`{"servers":[{"name":"Сервер","ip":"app-01.example.local"}]}`))
 	if err != nil {
 		t.Fatalf("ParseServers() error = %v", err)
 	}
@@ -32,7 +32,7 @@ func TestParseServersAcceptsDNSName(t *testing.T) {
 
 // Если имя не указано (известен только IP) — именем становится адрес.
 func TestParseServersNameOptional(t *testing.T) {
-	servers, err := ParseServers([]byte(`{"servers":[{"ip":"192.168.20.31"},{"name":"","ip":"192.168.20.32"}]}`))
+	servers, _, err := ParseServers([]byte(`{"servers":[{"ip":"192.168.20.31"},{"name":"","ip":"192.168.20.32"}]}`))
 	if err != nil {
 		t.Fatalf("ParseServers() error = %v", err)
 	}
@@ -44,11 +44,27 @@ func TestParseServersNameOptional(t *testing.T) {
 // Файл с UTF-8 BOM (как сохраняет Блокнот/Out-File в Windows) должен читаться.
 func TestParseServersAcceptsUTF8BOM(t *testing.T) {
 	data := append([]byte("\xEF\xBB\xBF"), []byte(`{"servers":[{"name":"Сервер 1","ip":"192.168.20.31"}]}`)...)
-	servers, err := ParseServers(data)
+	servers, _, err := ParseServers(data)
 	if err != nil {
 		t.Fatalf("ParseServers() с BOM error = %v", err)
 	}
 	if len(servers) != 1 || servers[0].IP != "192.168.20.31" {
+		t.Fatalf("ParseServers() = %#v", servers)
+	}
+}
+
+// Повторяющиеся адреса не отклоняют файл: они пропускаются (остаётся первый),
+// а их число возвращается — чтобы обновлённый список можно было грузить снова.
+func TestParseServersSkipsDuplicates(t *testing.T) {
+	servers, duplicates, err := ParseServers([]byte(
+		`{"servers":[{"name":"A","ip":"192.168.1.1"},{"name":"B","ip":"192.168.1.1"},{"name":"C","ip":"192.168.1.2"}]}`))
+	if err != nil {
+		t.Fatalf("ParseServers() error = %v", err)
+	}
+	if len(servers) != 2 || duplicates != 1 {
+		t.Fatalf("ParseServers() = %#v, duplicates = %d", servers, duplicates)
+	}
+	if servers[0].Name != "A" || servers[1].IP != "192.168.1.2" {
 		t.Fatalf("ParseServers() = %#v", servers)
 	}
 }
@@ -61,12 +77,11 @@ func TestParseServersRejectsInvalidConfiguration(t *testing.T) {
 	}{
 		{name: "empty", json: `{"servers":[]}`, want: "пуст"},
 		{name: "invalid address", json: `{"servers":[{"name":"Сервер","ip":"bad_name!"}]}`, want: "IP-адрес"},
-		{name: "duplicate", json: `{"servers":[{"name":"A","ip":"192.168.1.1"},{"name":"B","ip":"192.168.1.1"}]}`, want: "повторно"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := ParseServers([]byte(test.json))
+			_, _, err := ParseServers([]byte(test.json))
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("ParseServers() error = %v, want fragment %q", err, test.want)
 			}
