@@ -115,7 +115,7 @@ func fetchServers(address string) ([]constandstruct.Server, error) {
 		return nil, fmt.Errorf("ответ превышает допустимый размер %d байт", maxServersSize)
 	}
 
-	servers, err := ParseServers(data)
+	servers, _, err := ParseServers(data)
 	if err != nil {
 		return nil, fmt.Errorf("некорректный ответ %s: %w", address, err)
 	}
@@ -127,7 +127,7 @@ func loadServersFile(path string) ([]constandstruct.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("не удалось прочитать %s: %w", path, err)
 	}
-	servers, err := ParseServers(data)
+	servers, _, err := ParseServers(data)
 	if err != nil {
 		return nil, fmt.Errorf("некорректный файл %s: %w", path, err)
 	}
@@ -193,25 +193,30 @@ func readServersCache() ([]constandstruct.Server, string, error) {
 	return servers, path, nil
 }
 
-func ParseServers(data []byte) ([]constandstruct.Server, error) {
+// ParseServers разбирает JSON со списком серверов. Второе значение — сколько
+// повторяющихся адресов пропущено: файл из-за них не отклоняется (чтобы
+// обновлённый список можно было загружать снова и снова), остаётся первое
+// вхождение адреса.
+func ParseServers(data []byte) ([]constandstruct.Server, int, error) {
 	// Файл, сохранённый в Windows (Блокнот, Out-File), часто начинается с
 	// UTF-8 BOM — без его удаления json.Unmarshal падает.
 	data = bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))
 	var config serversConfig
 	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("ошибка JSON: %w", err)
+		return nil, 0, fmt.Errorf("ошибка JSON: %w", err)
 	}
 	if len(config.Servers) == 0 {
-		return nil, errors.New("список servers пуст")
+		return nil, 0, errors.New("список servers пуст")
 	}
 
 	seenAddresses := make(map[string]struct{}, len(config.Servers))
 	servers := make([]constandstruct.Server, 0, len(config.Servers))
+	duplicates := 0
 	for index, server := range config.Servers {
 		server.Name = strings.TrimSpace(server.Name)
 		server.IP = strings.TrimSpace(server.IP)
 		if net.ParseIP(server.IP) == nil && !validHostname(server.IP) {
-			return nil, fmt.Errorf("servers[%d]: некорректный IP-адрес или DNS-имя %q", index, server.IP)
+			return nil, 0, fmt.Errorf("servers[%d]: некорректный IP-адрес или DNS-имя %q", index, server.IP)
 		}
 		// Имя необязательно: известен только адрес — показываем его как имя.
 		if server.Name == "" {
@@ -219,12 +224,13 @@ func ParseServers(data []byte) ([]constandstruct.Server, error) {
 		}
 		key := strings.ToLower(server.IP)
 		if _, exists := seenAddresses[key]; exists {
-			return nil, fmt.Errorf("servers[%d]: адрес %q указан повторно", index, server.IP)
+			duplicates++
+			continue
 		}
 		seenAddresses[key] = struct{}{}
 		servers = append(servers, server)
 	}
-	return servers, nil
+	return servers, duplicates, nil
 }
 
 func validHostname(value string) bool {

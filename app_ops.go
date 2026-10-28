@@ -59,11 +59,15 @@ func (a *App) ImportServers() ([]constandstruct.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("не удалось прочитать файл: %w", err)
 	}
-	servers, err := config.ParseServers(data)
+	servers, duplicates, err := config.ParseServers(data)
 	if err != nil {
 		return nil, err
 	}
-	a.logLine(fmt.Sprintf("Загружен список серверов из файла: %d.", len(servers)))
+	line := fmt.Sprintf("Загружен список серверов из файла: %d.", len(servers))
+	if duplicates > 0 {
+		line += fmt.Sprintf(" Пропущено повторяющихся адресов: %d.", duplicates)
+	}
+	a.logLine(line)
 	return servers, nil
 }
 
