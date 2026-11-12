@@ -39,6 +39,8 @@ export function RunCommand(arg1:string,arg2:string,arg3:string,arg4:string,arg5:
 
 export function RunCommandInSession(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:constandstruct.RemoteUser):Promise<void>;
 
+export function RunCommandOnTargets(arg1:Array<constandstruct.Server>,arg2:string,arg3:string,arg4:string,arg5:string):Promise<void>;
+
 export function SaveComputersExample():Promise<string>;
 
 export function SaveRemoteFile(arg1:string,arg2:string,arg3:string,arg4:constandstruct.RemoteTextDocument,arg5:string):Promise<constandstruct.RemoteSaveResult>;

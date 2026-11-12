@@ -170,10 +170,18 @@ function setupUpdates(): void {
     sheet.showModal()
   }
 
+  // Текст кнопки скрыт для глаз (её роль — иконка + красный индикатор), поэтому
+  // состояние показываем через title и aria-label, а не видимой надписью.
+  const setHint = (text: string): void => {
+    label.textContent = text
+    button.title = text
+    button.setAttribute('aria-label', text)
+  }
+
   const markAvailable = (info: UpdateInfo): void => {
     pending = info
-    dot.hidden = false
-    label.textContent = `Обновить до ${info.version ?? ''}`
+    dot.hidden = false // красный индикатор: доступно обновление
+    setHint(`Доступно обновление до ${info.version ?? ''}`)
   }
 
   // Автопроверка при запуске/по таймеру помечает кнопку, если версия новее.
@@ -188,8 +196,6 @@ function setupUpdates(): void {
       openSheet(pending)
       return
     }
-    const previous = label.textContent
-    label.textContent = 'Проверяю…'
     button.disabled = true
     try {
       const info = await Go.CheckUpdate()
@@ -203,7 +209,6 @@ function setupUpdates(): void {
       toast(String(err))
     } finally {
       button.disabled = false
-      if (!pending) label.textContent = previous ?? 'Проверить обновления'
     }
   })
 

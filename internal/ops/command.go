@@ -102,39 +102,97 @@ func executePowerShellScript(
 				sourceDescription,
 			))
 		}
-		serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.MutationServerTimeout)
-		finishStatus := startRemoteStatus(target, constandstruct.MutationServerTimeout, logLine)
-		var lines []string
-		var err error
-		if targetUser == nil {
-			lines, err = remotefunc.RunRemoteScriptWithProgress(
-				serverCtx, target.IP, user, password, scriptText, remoteProgressLogger(target, logLine),
-			)
-		} else {
-			lines, err = remotefunc.RunRemoteScriptInUserSessionWithProgress(
-				serverCtx,
-				target.IP,
-				user,
-				password,
-				scriptText,
-				*targetUser,
-				remoteProgressLogger(target, logLine),
-			)
-		}
-		statusErr := err
-		if statusErr == nil {
-			if text := remoteError(lines); text != "" {
-				statusErr = fmt.Errorf("%s", text)
-			}
-		}
-		finishStatus(statusErr)
-		stop()
-		if !logCallError(operationCtx, target, err, logLine) && err == nil {
-			logPowerShellResult(target, lines, logLine, outputLine)
+		runScriptOnTarget(operationCtx, target, user, password, scriptText, targetUser, logLine, outputLine)
+		logLine("--- Выполнение PowerShell завершено ---")
+	}()
+	return true
+}
+
+// RunScriptOnTargets запускает один сценарий PowerShell на каждом компьютере
+// списка (от учётных данных администратора) параллельно. Вывод каждого
+// компьютера сразу уходит в журнал. false — выполнение не началось (причина в
+// журнале). Сессия пользователя для списка не поддерживается: запуск идёт на
+// самом компьютере.
+func RunScriptOnTargets(
+	ctx context.Context,
+	targets []constandstruct.Server,
+	user, password string,
+	scriptText, sourceDescription string,
+	logLine, outputLine func(string),
+) bool {
+	if len(targets) == 0 {
+		logLine("Выполнение по списку: выберите серверы или введите IP вручную.")
+		return false
+	}
+	user, password, ok := validateCredentials(user, password, logLine)
+	if !ok {
+		return false
+	}
+	if strings.TrimSpace(scriptText) == "" {
+		logLine("Введите команду PowerShell или прикрепите непустой .ps1-файл.")
+		return false
+	}
+	if len([]byte(scriptText)) > remotefunc.MaxRemoteScriptBytes {
+		logLine(fmt.Sprintf("Сценарий слишком большой: максимум %d байт.", remotefunc.MaxRemoteScriptBytes))
+		return false
+	}
+	operationCtx, started := beginOperation(ctx, logLine)
+	if !started {
+		return false
+	}
+
+	go func() {
+		defer finishOperation()
+		logLine(fmt.Sprintf(
+			"=== Запуск PowerShell на компьютерах: %d; источник: %s ===",
+			len(targets),
+			sourceDescription,
+		))
+		runTargetsLimit(operationCtx, targets, constandstruct.MaxParallelServers, func(target constandstruct.Server) {
+			runScriptOnTarget(operationCtx, target, user, password, scriptText, nil, logLine, outputLine)
+		})
+		if operationCtx.Err() != nil {
+			logLine("Выполнение остановлено: " + contextErrorText(operationCtx.Err()))
 		}
 		logLine("--- Выполнение PowerShell завершено ---")
 	}()
 	return true
+}
+
+// runScriptOnTarget выполняет сценарий на одном компьютере (без beginOperation,
+// со своим тайм-аутом на компьютер) — общее для одиночного запуска и запуска по
+// списку. targetUser != nil запускает сценарий в сессии пользователя.
+func runScriptOnTarget(
+	operationCtx context.Context,
+	target constandstruct.Server,
+	user, password, scriptText string,
+	targetUser *constandstruct.RemoteUser,
+	logLine, outputLine func(string),
+) {
+	serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.MutationServerTimeout)
+	defer stop()
+	finishStatus := startRemoteStatus(target, constandstruct.MutationServerTimeout, logLine)
+	var lines []string
+	var err error
+	if targetUser == nil {
+		lines, err = remotefunc.RunRemoteScriptWithProgress(
+			serverCtx, target.IP, user, password, scriptText, remoteProgressLogger(target, logLine),
+		)
+	} else {
+		lines, err = remotefunc.RunRemoteScriptInUserSessionWithProgress(
+			serverCtx, target.IP, user, password, scriptText, *targetUser, remoteProgressLogger(target, logLine),
+		)
+	}
+	statusErr := err
+	if statusErr == nil {
+		if text := remoteError(lines); text != "" {
+			statusErr = fmt.Errorf("%s", text)
+		}
+	}
+	finishStatus(statusErr)
+	if !logCallError(operationCtx, target, err, logLine) && err == nil {
+		logPowerShellResult(target, lines, logLine, outputLine)
+	}
 }
 
 func logPowerShellResult(
