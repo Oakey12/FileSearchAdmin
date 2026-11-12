@@ -25,6 +25,7 @@ import {
   type Backdrop,
 } from './backdrop'
 import { byId } from './dom'
+import { toast } from './toast'
 import { Creds } from './creds'
 import { Journal } from './journal'
 import { setupJournalLayout } from './journal-layout'
@@ -156,24 +157,54 @@ function setupBackdrop(): void {
 function setupUpdates(): void {
   const button = byId<HTMLButtonElement>('update')
   const dot = byId<HTMLElement>('updateDot')
+  const label = byId<HTMLElement>('updateLabel')
   const sheet = byId<HTMLDialogElement>('updateSheet')
   let pending: UpdateInfo | null = null
 
-  onUpdateAvailable((info) => {
-    if (!info.available) return
-    pending = info
-    button.hidden = false
-    dot.hidden = false
-  })
-
-  button.addEventListener('click', () => {
-    if (!pending) return
-    byId('sheetTitle').textContent = `Версия ${pending.version ?? ''}`
+  const openSheet = (info: UpdateInfo): void => {
+    byId('sheetTitle').textContent = `Версия ${info.version ?? ''}`
     byId('sheetText').textContent = 'Доступно обновление. Программа закроется и запустится заново.'
-    byId('sheetNotes').textContent = pending.notes ?? ''
+    byId('sheetNotes').textContent = info.notes ?? ''
     byId('sheetError').textContent = ''
     byId<HTMLElement>('sheetProgress').hidden = true
     sheet.showModal()
+  }
+
+  const markAvailable = (info: UpdateInfo): void => {
+    pending = info
+    dot.hidden = false
+    label.textContent = `Обновить до ${info.version ?? ''}`
+  }
+
+  // Автопроверка при запуске/по таймеру помечает кнопку, если версия новее.
+  onUpdateAvailable((info) => {
+    if (info.available) markAvailable(info)
+  })
+
+  // Кнопка всегда доступна: если обновление уже найдено — открывает окно
+  // установки; иначе проверяет сервер вручную.
+  button.addEventListener('click', async () => {
+    if (pending) {
+      openSheet(pending)
+      return
+    }
+    const previous = label.textContent
+    label.textContent = 'Проверяю…'
+    button.disabled = true
+    try {
+      const info = await Go.CheckUpdate()
+      if (info.available) {
+        markAvailable(info)
+        openSheet(info)
+      } else {
+        toast(`Установлена последняя версия (${info.current}).`)
+      }
+    } catch (err) {
+      toast(String(err))
+    } finally {
+      button.disabled = false
+      if (!pending) label.textContent = previous ?? 'Проверить обновления'
+    }
   })
 
   onUpdateProgress((fraction) => {
