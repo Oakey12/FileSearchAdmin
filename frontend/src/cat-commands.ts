@@ -1,139 +1,219 @@
-// Категория «Команды»: выполнение PowerShell на целевом компьютере или в сессии
-// выбранного пользователя.
+// Категория «Команды»: библиотека PowerShell-скриптов. Можно добавить скрипт
+// (имя + текст или .ps1-файл), хранить список и выполнить выбранный скрипт от
+// имени администратора на выбранных серверах из JSON или на введённом вручную
+// IP. Список скриптов хранится локально у пользователя (localStorage).
 
-import { Go, type RemoteUser } from './go'
+import { Go } from './go'
 import { clear, el } from './dom'
 import { confirmAction } from './confirm'
 import { toast } from './toast'
 import { categoryHeader, card, actions, button } from './ui'
 import type { Creds } from './creds'
 
-type Mode = 'machine' | 'session'
+interface SavedScript {
+  id: string
+  name: string
+  text: string
+}
+
+const STORAGE_KEY = 'admin.commandScripts'
 
 export class CommandsPanel {
-  private mode: Mode = 'machine'
-  private users: RemoteUser[] = []
-  private selectedUser: RemoteUser | null = null
-  private script!: HTMLTextAreaElement
-  private attachedName = 'поле ввода'
-  private sessionBlock!: HTMLElement
-  private userListEl!: HTMLElement
+  private scripts: SavedScript[] = []
+  private selectedId: string | null = null
+
+  private nameInput!: HTMLInputElement
+  private textArea!: HTMLTextAreaElement
+  private listEl!: HTMLElement
+  private runBtn!: HTMLButtonElement
+  private selectedLabel!: HTMLElement
 
   constructor(private root: HTMLElement, private creds: Creds) {
+    this.scripts = this.load()
     this.build()
   }
 
   private build(): void {
-    this.root.append(categoryHeader('i-play', 'Команды', 'Запуск сценария PowerShell на компьютере или в сессии пользователя.'))
+    this.root.append(
+      categoryHeader(
+        'i-play',
+        'Команды',
+        'Библиотека PowerShell-скриптов: добавьте скрипт и выполните его от имени администратора на выбранных серверах.',
+      ),
+    )
 
-    const panel = card('Целевой компьютер и режим', 'Компьютер берётся из поля «IP вручную» или первого выбранного сервера.')
+    // --- Добавить скрипт ---------------------------------------------
+    const addCard = card('Добавить скрипт', 'Введите имя и текст скрипта или прикрепите .ps1 (UTF-8, UTF-8 BOM или UTF-16 с BOM).')
+    this.nameInput = el('input', {
+      class: 'inp',
+      type: 'text',
+      placeholder: 'Название скрипта, например «Очистка временных файлов»',
+      autocomplete: 'off',
+      spellcheck: false,
+    }) as HTMLInputElement
+    this.textArea = el('textarea', {
+      class: 'inp',
+      placeholder: 'Например: Get-Service | Where-Object Status -eq Running',
+      spellcheck: false,
+    }) as HTMLTextAreaElement
+    this.textArea.style.minHeight = '140px'
 
-    const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': 'Режим' })
-    const machineBtn = el('button', { type: 'button', text: 'На компьютере', 'aria-pressed': 'true' })
-    const sessionBtn = el('button', { type: 'button', text: 'В сессии пользователя', 'aria-pressed': 'false' })
-    machineBtn.addEventListener('click', () => this.setMode('machine', machineBtn, sessionBtn))
-    sessionBtn.addEventListener('click', () => this.setMode('session', machineBtn, sessionBtn))
-    seg.append(machineBtn, sessionBtn)
-    panel.append(seg)
-
-    this.sessionBlock = el('div', { class: 'field' })
-    this.sessionBlock.hidden = true
-    const scanUsersBtn = button('Сканировать пользователей')
-    scanUsersBtn.addEventListener('click', () => this.scanUsers())
-    this.userListEl = el('div', { class: 'result-list' })
-    this.sessionBlock.append(actions(scanUsersBtn), this.userListEl)
-    panel.append(this.sessionBlock)
-
-    const scriptCard = card('Сценарий', 'Введите команду или прикрепите .ps1 (UTF-8, UTF-8 BOM или UTF-16 с BOM).')
-    this.script = el('textarea', { class: 'inp', placeholder: 'Например: Get-Service | Where-Object Status -eq Running', spellcheck: false }) as HTMLTextAreaElement
-    this.script.style.minHeight = '140px'
-    this.script.addEventListener('input', () => { this.attachedName = 'поле ввода' })
     const attachBtn = button('Прикрепить .ps1…')
     attachBtn.addEventListener('click', () => this.attach())
-    const runBtn = button('Выполнить', 'primary')
-    runBtn.addEventListener('click', () => this.run())
-    scriptCard.append(el('div', { class: 'field' }, [this.script]), actions(attachBtn, runBtn))
+    const addBtn = button('Добавить в список', 'primary')
+    addBtn.addEventListener('click', () => this.add())
 
-    this.root.append(panel, scriptCard)
-  }
+    addCard.append(
+      el('div', { class: 'field' }, [el('label', { text: 'Имя' }), this.nameInput]),
+      el('div', { class: 'field' }, [el('label', { text: 'Скрипт' }), this.textArea]),
+      actions(attachBtn, addBtn),
+    )
 
-  private setMode(mode: Mode, machineBtn: HTMLElement, sessionBtn: HTMLElement): void {
-    this.mode = mode
-    machineBtn.setAttribute('aria-pressed', String(mode === 'machine'))
-    sessionBtn.setAttribute('aria-pressed', String(mode === 'session'))
-    this.sessionBlock.hidden = mode !== 'session'
-  }
+    // --- Список скриптов ---------------------------------------------
+    const listCard = card('Сохранённые скрипты', 'Выберите один скрипт для запуска. Список хранится на этом компьютере.')
+    this.listEl = el('div', { class: 'result-list' })
+    listCard.append(this.listEl)
 
-  private async scanUsers(): Promise<void> {
-    const ip = this.creds.requireIP()
-    if (!ip) return
-    try {
-      this.users = await Go.ScanUsers(ip, this.creds.login, this.creds.password)
-    } catch (err) {
-      toast(String(err))
-      return
-    }
-    this.selectedUser = null
-    clear(this.userListEl)
-    if (this.users.length === 0) {
-      this.userListEl.append(el('p', { class: 'hint', text: 'Активные пользователи не найдены.' }))
-      return
-    }
-    for (const user of this.users) {
-      const radio = el('input', { type: 'radio', name: 'cmd-user' }) as HTMLInputElement
-      radio.addEventListener('change', () => {
-        this.selectedUser = user
-        for (const r of this.userListEl.querySelectorAll('.result-row')) r.classList.remove('selected')
-        row.classList.add('selected')
-      })
-      const row = el('label', { class: 'result-row' }, [
-        radio,
-        el('div', { class: 'result-main' }, [
-          el('div', { class: 'result-name', text: user.DisplayName || user.Username }),
-          el('div', { class: 'result-meta', text: `${user.Username} · сессия ${user.SessionID}` }),
-        ]),
-      ])
-      this.userListEl.append(row)
-    }
+    // --- Выполнение --------------------------------------------------
+    const runCard = card('Выполнить от администратора', 'Скрипт запускается на всех выбранных серверах из списка или на введённом вручную IP, от указанных в карточке подключения учётных данных администратора.')
+    this.selectedLabel = el('p', { class: 'hint', text: 'Скрипт не выбран.' })
+    this.runBtn = button('Выполнить на серверах', 'primary')
+    this.runBtn.disabled = true
+    this.runBtn.addEventListener('click', () => this.run())
+    runCard.append(this.selectedLabel, actions(this.runBtn))
+
+    this.root.append(addCard, listCard, runCard)
+    this.renderList()
   }
 
   private async attach(): Promise<void> {
     try {
       const file = await Go.PickAndReadScript()
       if (!file.name) return
-      this.script.value = file.text
-      this.attachedName = file.name
+      this.textArea.value = file.text
+      if (!this.nameInput.value.trim()) this.nameInput.value = file.name
       toast(`Прикреплён: ${file.name}`)
     } catch (err) {
       toast(String(err))
     }
   }
 
-  private async run(): Promise<void> {
-    const ip = this.creds.requireIP()
-    if (!ip) return
-    const text = this.script.value.trim()
+  private add(): void {
+    const name = this.nameInput.value.trim()
+    const text = this.textArea.value.trim()
+    if (!name) {
+      toast('Введите имя скрипта.')
+      return
+    }
     if (!text) {
-      toast('Введите команду PowerShell или прикрепите .ps1.')
+      toast('Введите текст скрипта или прикрепите .ps1.')
       return
     }
-    if (this.mode === 'session' && !this.selectedUser) {
-      toast('Выберите пользователя: просканируйте и отметьте сессию.')
+    const script: SavedScript = { id: newId(), name, text }
+    this.scripts.push(script)
+    this.save()
+    this.nameInput.value = ''
+    this.textArea.value = ''
+    this.renderList()
+    toast(`Скрипт «${name}» добавлен.`)
+  }
+
+  private remove(id: string): void {
+    this.scripts = this.scripts.filter((s) => s.id !== id)
+    if (this.selectedId === id) this.selectedId = null
+    this.save()
+    this.renderList()
+  }
+
+  private renderList(): void {
+    clear(this.listEl)
+    if (this.scripts.length === 0) {
+      this.listEl.append(el('p', { class: 'hint', text: 'Список пуст — добавьте первый скрипт выше.' }))
+      this.reflectSelection()
       return
     }
-    const where = this.mode === 'session' && this.selectedUser
-      ? `в сессии «${this.selectedUser.DisplayName || this.selectedUser.Username}» (ID ${this.selectedUser.SessionID})`
-      : 'на компьютере'
+    for (const script of this.scripts) {
+      const radio = el('input', { type: 'radio', name: 'cmd-script' }) as HTMLInputElement
+      radio.checked = this.selectedId === script.id
+      radio.addEventListener('change', () => {
+        this.selectedId = script.id
+        for (const r of this.listEl.querySelectorAll('.result-row')) r.classList.remove('selected')
+        row.classList.add('selected')
+        this.reflectSelection()
+      })
+      const deleteBtn = button('Удалить', 'danger')
+      deleteBtn.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        this.remove(script.id)
+      })
+      const preview = script.text.length > 120 ? script.text.slice(0, 120) + '…' : script.text
+      const row = el('label', { class: 'result-row' + (this.selectedId === script.id ? ' selected' : '') }, [
+        radio,
+        el('div', { class: 'result-main' }, [
+          el('div', { class: 'result-name', text: script.name }),
+          el('div', { class: 'result-meta', text: preview.replace(/\s+/g, ' ') }),
+        ]),
+        deleteBtn,
+      ])
+      this.listEl.append(row)
+    }
+    this.reflectSelection()
+  }
+
+  private selectedScript(): SavedScript | null {
+    return this.scripts.find((s) => s.id === this.selectedId) ?? null
+  }
+
+  private reflectSelection(): void {
+    const script = this.selectedScript()
+    this.runBtn.disabled = !script
+    this.selectedLabel.textContent = script ? `Выбран скрипт: «${script.name}».` : 'Скрипт не выбран.'
+  }
+
+  private async run(): Promise<void> {
+    const script = this.selectedScript()
+    if (!script) {
+      toast('Выберите скрипт из списка.')
+      return
+    }
+    const targets = this.creds.requireTargets()
+    if (!targets) return
+    const where = targets.length === 1 ? `на ${targets[0].ip}` : `на серверах: ${targets.length}`
     const ok = await confirmAction(
-      'Выполнить сценарий',
-      `Запустить сценарий ${where} на ${ip}?\n\nИсточник: ${this.attachedName}.`,
+      'Выполнить от администратора',
+      `Запустить скрипт «${script.name}» ${where}?\n\nСкрипт выполнится от учётных данных администратора, указанных в карточке подключения.`,
     )
     if (!ok) return
+    Go.RunCommandOnTargets(targets, this.creds.login, this.creds.password, script.text, script.name)
+  }
 
-    if (this.mode === 'session' && this.selectedUser) {
-      Go.RunCommandInSession(ip, this.creds.login, this.creds.password, text, this.attachedName, this.selectedUser)
-    } else {
-      Go.RunCommand(ip, this.creds.login, this.creds.password, text, this.attachedName)
+  private load(): SavedScript[] {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (!raw) return []
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) return []
+      return parsed
+        .filter((s): s is SavedScript => !!s && typeof s.id === 'string' && typeof s.name === 'string' && typeof s.text === 'string')
+    } catch {
+      return []
     }
+  }
+
+  private save(): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.scripts))
+    } catch {
+      /* приватный режим или заполненное хранилище — список не сохранится */
+    }
+  }
+}
+
+function newId(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `s${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   }
 }

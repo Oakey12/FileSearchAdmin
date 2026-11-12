@@ -127,6 +127,14 @@ func (a *App) RunCommand(ip, user, password, script, source string) {
 	})
 }
 
+// RunCommandOnTargets выполняет один PowerShell-сценарий на всех выбранных
+// серверах (или на введённом вручную IP) от учётных данных администратора.
+func (a *App) RunCommandOnTargets(targets []constandstruct.Server, user, password, script, source string) {
+	a.stream(func() {
+		ops.RunScriptOnTargets(a.ctx, targets, user, password, script, source, a.logLine, a.outputLine)
+	})
+}
+
 // RunCommandInSession выполняет сценарий в сессии выбранного пользователя.
 func (a *App) RunCommandInSession(ip, user, password, script, source string, targetUser constandstruct.RemoteUser) {
 	a.stream(func() {
