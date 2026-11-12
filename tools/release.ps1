@@ -7,7 +7,11 @@
     [switch]$BuildFrontend,
     # Пропустить проверки git (чистота дерева, отставание от origin/main).
     # Для CI: раннер и так делает чистый checkout нужного коммита/тега.
-    [switch]$SkipGitChecks
+    [switch]$SkipGitChecks,
+    # Пропустить `go test` при публикации. Часть тестов (internal/psScript)
+    # запускает PowerShell/WMI локально и зависит от окружения машины — на
+    # сервере публикации это не нужно, код проверяется на dev/CI.
+    [switch]$SkipTests
 )
 $ErrorActionPreference = "Stop"
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Версия должна быть вида 1.2.3" }
@@ -49,8 +53,10 @@ try {
     }
     Write-Host ("Собирается коммит: " + (git log -1 --format="%h %s"))
 
-    go test ./...
-    if ($LASTEXITCODE) { throw "Тесты не прошли" }
+    if (-not $SkipTests) {
+        go test ./...
+        if ($LASTEXITCODE) { throw "Тесты не прошли" }
+    }
     & $wails @buildArgs
     if ($LASTEXITCODE) { throw "Сборка не удалась" }
 } finally {
