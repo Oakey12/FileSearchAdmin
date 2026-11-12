@@ -229,7 +229,9 @@ async function main(): Promise<void> {
   setupCategories(creds)
 
   try {
-    byId('version').textContent = `Версия ${await Go.Version()}`
+    const version = `Версия ${await Go.Version()}`
+    byId('version').textContent = version
+    byId('sideVer').textContent = version
   } catch {
     /* окно ещё не готово — не критично */
   }
