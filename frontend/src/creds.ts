@@ -6,6 +6,16 @@ import { Go, type Server } from './go'
 import { byId, clear, el } from './dom'
 import { toast } from './toast'
 
+// Пример для кнопки «Пример JSON»: имя необязательно (без него покажется IP),
+// повторяющиеся адреса пропускаются.
+const EXAMPLE_SERVERS_JSON = `{
+  "servers": [
+    { "name": "Сервер 1С (основной)", "ip": "192.168.20.31" },
+    { "name": "Терминальный сервер", "ip": "192.168.20.40" },
+    { "ip": "192.168.20.50" }
+  ]
+}`
+
 export class Creds {
   private root: HTMLElement
   private servers: Server[] = []
@@ -28,9 +38,14 @@ export class Creds {
 
     // Левая колонка — серверы + ручной IP
     const left = el('div', { class: 'field' })
+    const exampleBtn = el('button', { class: 'link-btn', type: 'button', text: 'Пример JSON', title: 'Скопировать пример JSON в буфер обмена' })
+    exampleBtn.addEventListener('click', () => this.copyExample())
     const importBtn = el('button', { class: 'link-btn', type: 'button', text: 'Загрузить JSON…', title: 'Загрузить список серверов из JSON-файла' })
     importBtn.addEventListener('click', () => this.importServers())
-    left.append(el('div', { class: 'field-head' }, [el('label', { text: 'Серверы' }), importBtn]))
+    left.append(el('div', { class: 'field-head' }, [
+      el('label', { text: 'Серверы' }),
+      el('div', { class: 'field-head-actions' }, [exampleBtn, importBtn]),
+    ]))
     this.listEl = el('div', { class: 'servers' })
     this.listEl.append(el('div', { class: 'servers-empty', text: 'Загрузка списка…' }))
     left.append(this.listEl)
@@ -80,6 +95,15 @@ export class Creds {
       this.servers = []
     }
     this.renderList()
+  }
+
+  private async copyExample(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(EXAMPLE_SERVERS_JSON)
+      toast('Пример JSON скопирован. Вставьте в Блокнот или VS Code, впишите свои серверы, сохраните .json и загрузите через «Загрузить JSON…».')
+    } catch {
+      toast('Не удалось скопировать пример.')
+    }
   }
 
   private async importServers(): Promise<void> {
