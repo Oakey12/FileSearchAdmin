@@ -10,7 +10,7 @@ import {
 import {
   WINDOW_BG,
   applyTheme,
-  currentTheme,
+  loadTheme,
   saveTheme,
   switchTheme,
   type Theme,
@@ -71,86 +71,106 @@ function mountScene(backdrop: Backdrop): void {
   }
 }
 
-function setupTheme(): void {
-  const themeToggle = byId<HTMLButtonElement>('themeToggle')
+// Оформление: тема (тёмная / светлая / чёрно-белая) и фон окна. Две связанные
+// настройки держим в одном месте, потому что они влияют друг на друга:
+//  • «Ч/Б» — лаконичная тема без декоративного фона: фон принудительно «Без фона»
+//    и кнопка фона заблокирована;
+//  • «Лес» — всегда тёмная сцена: тема отображается тёмной (сохранённый выбор не
+//    теряется), а меню тем заблокировано.
+function setupAppearance(): void {
+  const themeButton = byId<HTMLButtonElement>('themeButton')
+  const themeMenu = byId<HTMLElement>('themeMenu')
+  const bdButton = byId<HTMLButtonElement>('backdropButton')
+  const bdMenu = byId<HTMLElement>('backdropMenu')
+  const themeOptions = [...themeMenu.querySelectorAll<HTMLButtonElement>('.th-option')]
+  const bdOptions = [...bdMenu.querySelectorAll<HTMLButtonElement>('.bd-option')]
 
-  const reflect = (theme: Theme): void => {
-    const light = theme === 'light'
-    themeToggle.setAttribute('aria-pressed', String(light))
-    themeToggle.title = light ? 'Тёмная тема' : 'Светлая тема'
-  }
+  let theme: Theme = loadTheme()
+  let backdrop: Backdrop = currentBackdrop()
+  if (theme === 'bw') backdrop = 'none'
 
-  reflect(currentTheme())
-  syncWindow(currentTheme())
+  // Отображаемая тема: «Лес» требует тёмной сцены, сам выбор темы при этом цел.
+  const shownTheme = (): Theme => (backdrop === 'forest' ? 'dark' : theme)
+  const effectiveBackdrop = (): Backdrop => (theme === 'bw' ? 'none' : backdrop)
 
-  themeToggle.addEventListener('click', () => {
-    // В режиме «Лес» тема форсируется тёмной — переключатель заблокирован.
-    if (currentBackdrop() === 'forest') return
-    const next: Theme = currentTheme() === 'light' ? 'dark' : 'light'
-    switchTheme(next)
-    saveTheme(next)
-    reflect(next)
-    syncWindow(next)
-  })
-}
+  const render = (initial = false): void => {
+    const shown = shownTheme()
+    if (initial) applyTheme(shown)
+    else switchTheme(shown)
+    syncWindow(shown)
 
-function setupBackdrop(): void {
-  const button = byId<HTMLButtonElement>('backdropButton')
-  const menu = byId<HTMLElement>('backdropMenu')
-  const themeToggle = byId<HTMLButtonElement>('themeToggle')
+    applyBackdrop(effectiveBackdrop())
+    mountScene(effectiveBackdrop())
 
-  const options = [...menu.querySelectorAll<HTMLButtonElement>('.bd-option')]
-
-  const reflectOptions = (backdrop: Backdrop): void => {
-    for (const option of options) {
+    for (const option of themeOptions) {
+      option.setAttribute('aria-checked', String(option.dataset.theme === theme))
+    }
+    for (const option of bdOptions) {
       option.setAttribute('aria-checked', String(option.dataset.backdrop === backdrop))
     }
-    // «Лес» всегда тёмный: визуально тёмная тема, переключатель выключен.
-    if (backdrop === 'forest') {
-      applyTheme('dark')
-      syncWindow('dark')
-      themeToggle.disabled = true
-    } else {
-      themeToggle.disabled = false
-      applyTheme(currentTheme())
-      syncWindow(currentTheme())
+
+    themeButton.disabled = backdrop === 'forest'
+    themeButton.title = backdrop === 'forest' ? 'Тема зафиксирована фоном «Лес»' : 'Тема оформления'
+    bdButton.disabled = theme === 'bw'
+    bdButton.title = theme === 'bw' ? 'Фон недоступен в чёрно-белой теме' : 'Фон окна'
+  }
+
+  const closeMenus = (): void => {
+    themeMenu.hidden = true
+    themeButton.setAttribute('aria-expanded', 'false')
+    bdMenu.hidden = true
+    bdButton.setAttribute('aria-expanded', 'false')
+  }
+
+  const toggleMenu = (menu: HTMLElement, button: HTMLButtonElement): void => {
+    const willOpen = menu.hidden
+    closeMenus()
+    if (willOpen) {
+      menu.hidden = false
+      button.setAttribute('aria-expanded', 'true')
     }
   }
 
-  const apply = (backdrop: Backdrop): void => {
-    applyBackdrop(backdrop)
-    saveBackdrop(backdrop)
-    mountScene(backdrop)
-    reflectOptions(backdrop)
-  }
-
-  const closeMenu = (): void => {
-    menu.hidden = true
-    button.setAttribute('aria-expanded', 'false')
-  }
-
-  button.addEventListener('click', (event) => {
+  themeButton.addEventListener('click', (event) => {
     event.stopPropagation()
-    const open = menu.hidden
-    menu.hidden = !open
-    button.setAttribute('aria-expanded', String(open))
+    if (!themeButton.disabled) toggleMenu(themeMenu, themeButton)
   })
-  for (const option of options) {
+  bdButton.addEventListener('click', (event) => {
+    event.stopPropagation()
+    if (!bdButton.disabled) toggleMenu(bdMenu, bdButton)
+  })
+
+  for (const option of themeOptions) {
     option.addEventListener('click', () => {
-      apply((option.dataset.backdrop as Backdrop) ?? 'none')
-      closeMenu()
+      theme = (option.dataset.theme as Theme) ?? 'dark'
+      saveTheme(theme)
+      if (theme === 'bw' && backdrop !== 'none') {
+        backdrop = 'none'
+        saveBackdrop('none')
+      }
+      render()
+      closeMenus()
     })
   }
+  for (const option of bdOptions) {
+    option.addEventListener('click', () => {
+      backdrop = (option.dataset.backdrop as Backdrop) ?? 'none'
+      saveBackdrop(backdrop)
+      render()
+      closeMenus()
+    })
+  }
+
   document.addEventListener('click', (event) => {
-    if (!menu.hidden && !menu.contains(event.target as Node) && event.target !== button) closeMenu()
+    const target = event.target as Node
+    if (!themeMenu.hidden && !themeMenu.contains(target) && target !== themeButton) closeMenus()
+    else if (!bdMenu.hidden && !bdMenu.contains(target) && target !== bdButton) closeMenus()
   })
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !menu.hidden) closeMenu()
+    if (event.key === 'Escape' && (!themeMenu.hidden || !bdMenu.hidden)) closeMenus()
   })
 
-  const initial = currentBackdrop()
-  mountScene(initial)
-  reflectOptions(initial)
+  render(true)
 }
 
 // --- Обновления --------------------------------------------------------
@@ -255,8 +275,7 @@ function setupCategories(creds: Creds): void {
 
 // --- Старт -------------------------------------------------------------
 async function main(): Promise<void> {
-  setupTheme()
-  setupBackdrop()
+  setupAppearance()
   setupUpdates()
 
   new Journal()

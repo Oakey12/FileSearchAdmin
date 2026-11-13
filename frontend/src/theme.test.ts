@@ -30,6 +30,13 @@ describe('тема', () => {
     expect(loadTheme(() => s)).toBe('dark')
   })
 
+  it('сохраняет и читает чёрно-белую', () => {
+    const s = memoryStore()
+    saveTheme('bw', () => s)
+    expect(s.data.get(THEME_KEY)).toBe('bw')
+    expect(loadTheme(() => s)).toBe('bw')
+  })
+
   it('не падает без хранилища', () => {
     expect(loadTheme(broken)).toBe('dark')
     expect(() => saveTheme('light', broken)).not.toThrow()
@@ -43,6 +50,9 @@ describe('тема', () => {
     applyTheme('light', root)
     expect(root.getAttribute('data-theme')).toBe('light')
     expect(currentTheme(root)).toBe('light')
+    applyTheme('bw', root)
+    expect(root.getAttribute('data-theme')).toBe('bw')
+    expect(currentTheme(root)).toBe('bw')
     applyTheme('dark', root)
     expect(root.hasAttribute('data-theme')).toBe(false)
     expect(currentTheme(root)).toBe('dark')

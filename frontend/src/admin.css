@@ -5,7 +5,7 @@
 /* Цвет интерфейса не зависит от темы ОС: нативные элементы (выпадающие списки,
    полосы прокрутки, поля) следуют теме приложения, а не Windows. */
 :root { color-scheme: dark; }
-:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="light"], :root[data-theme="bw"] { color-scheme: light; }
 
 /* Атрибут hidden должен скрывать даже элементы с заданным display
    (панели категорий, пилюля обновления, спиннер и т.п.). */
@@ -60,10 +60,15 @@ body {
   width: 220px;
 }
 
-/* переключатель темы: солнце в тёмной теме, луна в светлой */
-.ic-moon { display: none; }
-:root[data-theme="light"] .ic-sun { display: none; }
-:root[data-theme="light"] .ic-moon { display: inline; }
+/* меню тем: свотчи вариантов (тёмная / светлая / чёрно-белая) */
+.th-swatch {
+  width: 100%; aspect-ratio: 16 / 10; border-radius: 6px;
+  border: 1px solid var(--hair-strong);
+}
+.th-option[aria-checked="true"] .th-swatch { border-color: transparent; box-shadow: 0 0 0 2px var(--accent); }
+.th-swatch-dark { background: linear-gradient(135deg, #1e1e20 0 60%, #2a2a2d 60%); }
+.th-swatch-light { background: linear-gradient(135deg, #f5f5f7 0 60%, #ffffff 60%); }
+.th-swatch-bw { background: linear-gradient(135deg, #ffffff 0 50%, #000000 50%); }
 
 /* --- Тело: сайдбар + контент + журнал --- */
 .adm-body {
@@ -107,18 +112,18 @@ body {
 .side-update {
   position: relative; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; padding: 0; border: 1px solid var(--border);
-  border-radius: 8px; background: var(--surface-2); color: var(--text-2);
+  width: 30px; height: 30px; padding: 0; border: 1px solid var(--hair-strong);
+  border-radius: 8px; background: var(--fill-06); color: var(--text-2);
   cursor: pointer;
 }
-.side-update:hover { background: var(--surface-3); color: var(--text-1); }
+.side-update:hover { background: var(--fill-10); color: var(--text); }
 .side-update:disabled { opacity: 0.6; cursor: default; }
 .side-update-icon { width: 16px; height: 16px; }
 /* красный индикатор: доступно обновление */
 .side-update .update-dot {
   position: absolute; top: -3px; right: -3px;
   width: 9px; height: 9px; border-radius: 50%;
-  background: #e5484d; border: 1.5px solid var(--surface-1);
+  background: #e5484d; border: 1.5px solid var(--sidebar);
   box-shadow: 0 0 0 1px rgba(229, 72, 77, 0.35);
 }
 /* скрытый для глаз, но доступный скринридеру текст */
@@ -325,6 +330,7 @@ textarea.inp { height: auto; padding: 9px 11px; resize: vertical; min-height: 96
 /* --- Проверка программы по списку компьютеров --- */
 :root { --ok: #30d158; --ok-soft: rgba(48, 209, 88, 0.14); --alert-soft: rgba(255, 69, 58, 0.14); }
 :root[data-theme="light"] { --ok: #1f7a34; --ok-soft: rgba(31, 122, 52, 0.11); --alert-soft: rgba(196, 41, 28, 0.1); }
+:root[data-theme="bw"] { --ok: #0a7a2f; --ok-soft: rgba(0, 0, 0, 0.06); --alert-soft: rgba(176, 0, 32, 0.1); }
 
 .check-query { display: flex; gap: 8px; align-items: center; }
 .check-query .inp, .check-query .search-box { flex: 1 1 auto; min-width: 0; }

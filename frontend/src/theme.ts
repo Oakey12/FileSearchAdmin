@@ -1,8 +1,9 @@
-// Тема интерфейса: тёмная по умолчанию или светлая по выбору человека.
-// От темы Windows не зависит. Выбор хранится в localStorage; до первой
-// отрисовки его применяет маленький скрипт в index.html, чтобы окно не мигало.
+// Тема интерфейса: тёмная по умолчанию, светлая или чёрно-белая (белый фон,
+// чёрный текст) по выбору человека. От темы Windows не зависит. Выбор хранится
+// в localStorage; до первой отрисовки его применяет маленький скрипт в
+// index.html, чтобы окно не мигало.
 
-export type Theme = 'dark' | 'light'
+export type Theme = 'dark' | 'light' | 'bw'
 
 /** Ключ в localStorage. Тот же ключ читает встроенный скрипт в index.html. */
 export const THEME_KEY = 'theme'
@@ -11,6 +12,7 @@ export const THEME_KEY = 'theme'
 export const WINDOW_BG: Record<Theme, [number, number, number]> = {
   dark: [30, 30, 32],
   light: [245, 245, 247],
+  bw: [255, 255, 255],
 }
 
 type Store = Pick<Storage, 'getItem' | 'setItem'>
@@ -20,7 +22,9 @@ const defaultStore = (): Store => localStorage
 
 export function loadTheme(store: () => Store = defaultStore): Theme {
   try {
-    return store().getItem(THEME_KEY) === 'light' ? 'light' : 'dark'
+    const stored = store().getItem(THEME_KEY)
+    if (stored === 'light' || stored === 'bw') return stored
+    return 'dark'
   } catch {
     return 'dark'
   }
@@ -32,12 +36,14 @@ export function saveTheme(theme: Theme, store: () => Store = defaultStore): void
 
 /** Ставит тему на <html>. Тёмная — без атрибута, как и до появления светлой. */
 export function applyTheme(theme: Theme, root: HTMLElement = document.documentElement): void {
-  if (theme === 'light') root.dataset.theme = 'light'
+  if (theme === 'light' || theme === 'bw') root.dataset.theme = theme
   else delete root.dataset.theme
 }
 
 export function currentTheme(root: HTMLElement = document.documentElement): Theme {
-  return root.dataset.theme === 'light' ? 'light' : 'dark'
+  const attr = root.dataset.theme
+  if (attr === 'light' || attr === 'bw') return attr
+  return 'dark'
 }
 
 /**

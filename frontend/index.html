@@ -4,8 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Удалённое управление 1С</title>
-  <script>try { if (localStorage.getItem('theme') === 'light' && localStorage.getItem('backdrop') !== 'forest') document.documentElement.dataset.theme = 'light' } catch (e) {}</script>
-  <script>try { var b = localStorage.getItem('backdrop'); if (b === 'particles' || b === 'forest') document.documentElement.dataset.backdrop = b } catch (e) {}</script>
+  <script>try { var t = localStorage.getItem('theme'), b = localStorage.getItem('backdrop'); if (t === 'bw') document.documentElement.dataset.theme = 'bw'; else if (t === 'light' && b !== 'forest') document.documentElement.dataset.theme = 'light'; if (t !== 'bw' && (b === 'particles' || b === 'forest')) document.documentElement.dataset.backdrop = b } catch (e) {}</script>
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -27,6 +26,7 @@
     <symbol id="i-panel" viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10 3v10" stroke="currentColor" stroke-width="1.3"/></symbol>
     <symbol id="i-right" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-download" viewBox="0 0 16 16"><path d="M8 1.75v8M4.75 6.5 8 9.75 11.25 6.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.75 11.5v1.25a1 1 0 0 0 1 1h8.5a1 1 0 0 0 1-1V11.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-contrast" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6.1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.9a6.1 6.1 0 0 1 0 12.2Z" fill="currentColor" stroke="none"/></symbol>
   </svg>
 
   <div class="backdrop" aria-hidden="true">
@@ -51,7 +51,15 @@
       <div class="adm-header-actions">
         <button class="pill-btn" id="journalToggle" type="button" title="Журнал" aria-label="Показать или скрыть журнал" aria-pressed="true"><svg><use href="#i-panel"/></svg></button>
         <button class="pill-btn" id="backdropButton" type="button" title="Фон окна" aria-label="Фон окна" aria-haspopup="dialog" aria-expanded="false" aria-controls="backdropMenu"><svg><use href="#i-sparkle"/></svg></button>
-        <button class="pill-btn" id="themeToggle" type="button" title="Светлая тема" aria-label="Светлая тема" aria-pressed="false"><svg class="ic-sun"><use href="#i-sun"/></svg><svg class="ic-moon"><use href="#i-moon"/></svg></button>
+        <button class="pill-btn" id="themeButton" type="button" title="Тема оформления" aria-label="Тема оформления" aria-haspopup="dialog" aria-expanded="false" aria-controls="themeMenu"><svg><use href="#i-contrast"/></svg></button>
+        <div class="bd-menu theme-menu" id="themeMenu" role="dialog" aria-label="Тема оформления" hidden>
+          <p class="bd-menu-title">Тема оформления</p>
+          <div class="bd-options" role="radiogroup" aria-label="Тема оформления">
+            <button class="bd-option th-option" type="button" role="radio" data-theme="dark" aria-checked="true"><span class="th-swatch th-swatch-dark"></span><span>Тёмная</span></button>
+            <button class="bd-option th-option" type="button" role="radio" data-theme="light" aria-checked="false"><span class="th-swatch th-swatch-light"></span><span>Светлая</span></button>
+            <button class="bd-option th-option" type="button" role="radio" data-theme="bw" aria-checked="false"><span class="th-swatch th-swatch-bw"></span><span>Ч/Б</span></button>
+          </div>
+        </div>
         <div class="bd-menu" id="backdropMenu" role="dialog" aria-label="Фон окна" hidden>
           <p class="bd-menu-title">Фон окна</p>
           <div class="bd-options" role="radiogroup" aria-label="Фон окна">
