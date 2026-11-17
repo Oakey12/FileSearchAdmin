@@ -373,6 +373,113 @@ func FinishProcess(
 	return true
 }
 
+// TestFinishProcess — сухой прогон закрытия 1С: находит процессы 1cv7s.exe на
+// выбранных серверах, определяет владельцев и пишет в журнал, у каких
+// пользователей 1С закрылась бы при реальном завершении. НИЧЕГО НЕ ЗАВЕРШАЕТ —
+// это только проверка охвата перед боевым закрытием.
+func TestFinishProcess(
+	ctx context.Context,
+	targets []constandstruct.Server,
+	user, password string,
+	logLine func(string),
+) bool {
+	if len(targets) == 0 {
+		logLine("Выберите хотя бы один сервер или введите IP вручную.")
+		return false
+	}
+	user, password, ok := validateCredentials(user, password, logLine)
+	if !ok {
+		return false
+	}
+	operationBaseCtx, started := beginOperation(ctx, logLine)
+	if !started {
+		return false
+	}
+
+	go func() {
+		defer finishOperation()
+		operationCtx, cancel := context.WithTimeout(operationBaseCtx, constandstruct.OperationTimeout)
+		defer cancel()
+
+		logLine("=== Тест закрытия 1С (ничего не завершается) ===")
+		var totalUsers, totalProcesses int
+		var totalMu sync.Mutex
+
+		runTargets(operationCtx, targets, func(target constandstruct.Server) {
+			logLine(fmt.Sprintf("=== Тест закрытия на %s (%s) ===", target.Name, target.IP))
+			serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.ServerTimeout)
+			finishStatus := startRemoteStatus(target, constandstruct.ServerTimeout, logLine)
+			lines, err := runRemoteWithProgress(serverCtx, target.IP, user, password, "find", constandstruct.TargetProcessNames, "", remoteProgressLogger(target, logLine))
+			finishStatus(err)
+			stop()
+			if logCallError(operationCtx, target, err, logLine) {
+				return
+			}
+			if err != nil {
+				return
+			}
+			if text := remoteError(lines); text != "" {
+				logLine(fmt.Sprintf("%s: ошибка: %s", target.Name, text))
+				return
+			}
+			logRemoteWarnings(target, lines, logLine)
+			processes := auxiliaryfunc.ParseFoundLines(lines)
+			if len(processes) == 0 {
+				logLine(fmt.Sprintf("%s: открытых 1cv7s.exe не найдено — закрывать нечего.", target.Name))
+				return
+			}
+
+			type ownerGroup struct {
+				pids     []int
+				sessions []int
+			}
+			byOwner := make(map[string]*ownerGroup)
+			order := make([]string, 0)
+			for _, process := range processes {
+				owner := strings.TrimSpace(process.Owner)
+				if owner == "" || owner == "неизвестно" {
+					owner = "неизвестный пользователь"
+				}
+				group := byOwner[owner]
+				if group == nil {
+					group = &ownerGroup{}
+					byOwner[owner] = group
+					order = append(order, owner)
+				}
+				if !containsInt(group.pids, process.PID) {
+					group.pids = append(group.pids, process.PID)
+				}
+				if !containsInt(group.sessions, process.Session) {
+					group.sessions = append(group.sessions, process.Session)
+				}
+			}
+			sort.Strings(order)
+			for _, owner := range order {
+				group := byOwner[owner]
+				sort.Ints(group.pids)
+				sort.Ints(group.sessions)
+				logLine(fmt.Sprintf(
+					"%s: у «%s» закрылась бы 1С — сессии %s, процессов %d (PID %s).",
+					target.Name, owner, joinInts(group.sessions), len(group.pids), joinInts(group.pids),
+				))
+			}
+			totalMu.Lock()
+			totalUsers += len(order)
+			totalProcesses += len(processes)
+			totalMu.Unlock()
+		})
+
+		if operationCtx.Err() != nil {
+			logLine("Тест остановлен: " + contextErrorText(operationCtx.Err()))
+		}
+		logLine(fmt.Sprintf(
+			"--- Тест закрытия завершён: пользователей %d, процессов %d. Ничего не закрыто (это тест). ---",
+			totalUsers, totalProcesses,
+		))
+	}()
+	return true
+}
+
 func formatNotificationMessage(login, displayName, message string) string {
 	login = strings.TrimSpace(login)
 	displayName = strings.TrimSpace(displayName)
@@ -788,4 +895,12 @@ func containsInt(values []int, target int) bool {
 		}
 	}
 	return false
+}
+
+func joinInts(values []int) string {
+	parts := make([]string, len(values))
+	for index, value := range values {
+		parts[index] = strconv.Itoa(value)
+	}
+	return strings.Join(parts, ", ")
 }

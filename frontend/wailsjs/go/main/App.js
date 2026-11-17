@@ -118,6 +118,10 @@ export function ServerList() {
   return window['go']['main']['App']['ServerList']();
 }
 
+export function TestFinish(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TestFinish'](arg1, arg2, arg3);
+}
+
 export function UninstallProgram(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UninstallProgram'](arg1, arg2, arg3, arg4);
 }

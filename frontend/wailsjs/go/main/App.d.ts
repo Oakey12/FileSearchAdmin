@@ -61,6 +61,8 @@ export function SearchProcesses(arg1:Array<constandstruct.Server>,arg2:string,ar
 
 export function ServerList():Promise<Array<constandstruct.Server>>;
 
+export function TestFinish(arg1:Array<constandstruct.Server>,arg2:string,arg3:string):Promise<void>;
+
 export function UninstallProgram(arg1:string,arg2:string,arg3:string,arg4:constandstruct.InstalledProgram):Promise<void>;
 
 export function Version():Promise<string>;

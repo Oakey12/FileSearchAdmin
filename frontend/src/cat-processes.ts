@@ -29,9 +29,15 @@ export class ProcessesPanel {
       const targets = this.creds.requireTargets()
       if (targets) Go.SearchProcesses(targets, this.creds.login, this.creds.password)
     })
+    const testFinishBtn = button('Тест закрытия 1С')
+    testFinishBtn.title = 'Показать в журнале, у каких пользователей закрылась бы 1С. Ничего не завершает.'
+    testFinishBtn.addEventListener('click', () => {
+      const targets = this.creds.requireTargets()
+      if (targets) Go.TestFinish(targets, this.creds.login, this.creds.password)
+    })
     const finishAllBtn = button('Завершить 1cv7s у всех', 'danger')
     finishAllBtn.addEventListener('click', () => this.finishAll())
-    proc.append(actions(searchBtn, finishAllBtn))
+    proc.append(actions(searchBtn, testFinishBtn, finishAllBtn))
 
     // сотрудники
     const emp = card('Сотрудники с открытой 1С', 'Просканируйте, отметьте сотрудников и завершите у них 1С.')
