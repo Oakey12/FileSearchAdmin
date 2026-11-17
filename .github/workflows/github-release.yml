@@ -1,0 +1,66 @@
+name: GitHub Release
+
+# Сборка и публикация скачиваемого .exe в разделе Releases репозитория.
+# Полностью на раннерах GitHub (windows-latest) — приватный сервер не нужен.
+# Запуск:
+#   1) пуш тега вида v1.2.3   →  git tag v1.2.3 && git push origin v1.2.3
+#   2) вручную из вкладки Actions (workflow_dispatch) с вводом версии
+#
+# Node.js не нужен: frontend/dist и привязки frontend/wailsjs лежат в репозитории
+# (-s -skipbindings). WebView2 встроен в exe (-webview2 embed), поэтому файл
+# самодостаточный и запускается без установки.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия в формате 1.2.3'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
+
+      - name: Determine version
+        id: ver
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $v = '${{ github.event.inputs.version }}'
+          } else {
+            $v = '${{ github.ref_name }}'.TrimStart('v')
+          }
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Неверная версия: $v (нужно 1.2.3)" }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build exe
+        shell: pwsh
+        run: |
+          wails build -clean -trimpath -webview2 embed -s -skipbindings `
+            -o FileSearchAdmin.exe `
+            -ldflags "-s -w -X filesearch-admin/internal/update.CurrentVersion=${{ steps.ver.outputs.version }}"
+          if (-not (Test-Path 'build/bin/FileSearchAdmin.exe')) { throw 'Сборка не создала exe' }
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: FileSearchAdmin ${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          files: build/bin/FileSearchAdmin.exe
