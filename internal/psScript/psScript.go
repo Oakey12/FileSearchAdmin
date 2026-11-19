@@ -3,11 +3,12 @@ package psscript
 const PsScript = `
 param(
     [Parameter(Mandatory=$true)][string]$ComputerName,
-    [Parameter(Mandatory=$true)][ValidateSet("find","findfast","kill","killids","notify")][string]$Action,
+    [Parameter(Mandatory=$true)][ValidateSet("find","findfast","terminate","notify")][string]$Action,
     [string]$ProcessNames,
     [string]$ProcessIds,
     [string]$Message,
     [string]$DefaultUser,
+    [switch]$DryRun,
     [switch]$CredentialFromStdin
 )
 
@@ -99,65 +100,360 @@ function Get-SessionOwnerLookup([string]$ServerName) {
     }
 }
 
-function Invoke-FilteredTaskkill($CimSession, [string[]]$AllowedNames, [int[]]$ProcessIds) {
-    $started = $false
-    $verified = $false
-    $remaining = @{}
-    $errors = @()
+# ---------------------------------------------------------------------------
+# Завершение процессов 1С.
+#
+# Один конвейер для боевого завершения и для теста (-DryRun): тест проходит те
+# же шаги и расходится с боем только перед необратимыми вызовами.
+#   1. Поиск процессов; личность процесса — PID + время запуска.
+#   2. Владельцы сеансов (quser, затем GetOwner) — до завершения.
+#   3. taskkill /F пакетом, с ожиданием завершения самого taskkill.
+#   4. Оставшимся — Win32_Process.Terminate по одному, с кодом ответа.
+#   5. Ожидание выхода: TerminateProcess асинхронен.
+# ---------------------------------------------------------------------------
 
-    try {
-        if ($ProcessIds.Count -eq 0) {
-            throw "не указаны PID для taskkill.exe"
+$TaskkillTimeoutMs = 20000
+$AfterTaskkillGraceMs = 2000
+$ExitWaitTimeoutMs = 8000
+$TaskkillPidsPerCall = 200
+
+function Format-Reason([string]$Text) {
+    if ($null -eq $Text) {
+        return ""
+    }
+    return $Text.Replace("|", "/").Replace([char]13, " ").Replace([char]10, " ").Trim()
+}
+
+# Коды возврата методов Win32_Process (Create и Terminate).
+function Get-Win32ProcessCodeText([uint32]$Code) {
+    switch ($Code) {
+        0 { return "успешно" }
+        2 { return "доступ запрещён (код 2)" }
+        3 { return "недостаточно привилегий (код 3)" }
+        8 { return "неизвестная ошибка (код 8)" }
+        9 { return "путь не найден (код 9)" }
+        21 { return "неверный параметр (код 21)" }
+        default { return ("код " + $Code) }
+    }
+}
+
+# PID после завершения может достаться другому процессу, поэтому процесс
+# опознаётся по паре PID + время запуска.
+function Get-ProcessKey($Process) {
+    $ticks = 0
+    if ($Process.CreationDate) {
+        $ticks = ([datetime]$Process.CreationDate).Ticks
+    }
+    return ([string]$Process.ProcessId + "@" + $ticks)
+}
+
+function Get-TargetProcesses($CimSession, [string[]]$Names, [int[]]$Ids) {
+    $nameFilter = ($Names | ForEach-Object { "Name='" + $_.Replace("'", "''") + "'" }) -join " or "
+    $filter = "(" + $nameFilter + ")"
+    if ($Ids.Count -gt 0) {
+        $filter += " and (" + (($Ids | ForEach-Object { "ProcessId=" + $_ }) -join " or ") + ")"
+    }
+    return @(Get-CimInstance -CimSession $CimSession -ClassName Win32_Process -Filter $filter -Property Handle,ProcessId,SessionId,Name,CreationDate -OperationTimeoutSec 60)
+}
+
+# Другие исполняемые файлы 1С (1cv7.exe, 1cv7l.exe, 1cv8.exe...), не входящие в
+# список завершения. Если 1С на сервере запущена под другим именем, поиск по
+# основному имени их не видит и выглядит как «не закрывается».
+function Get-OtherOneCVariants($CimSession, [string[]]$Names) {
+    $counts = @{}
+    $found = @(Get-CimInstance -CimSession $CimSession -ClassName Win32_Process -Filter "Name LIKE '1cv%'" -Property Name -OperationTimeoutSec 60)
+    foreach ($process in $found) {
+        $name = [string]$process.Name
+        if ($Names -contains $name) {
+            continue
         }
-
-        $operatingSystem = Get-CimInstance -CimSession $CimSession -ClassName Win32_OperatingSystem -OperationTimeoutSec 5
-        if (-not $operatingSystem -or [string]::IsNullOrWhiteSpace($operatingSystem.WindowsDirectory)) {
-            throw "не удалось определить каталог Windows"
+        if ($counts.ContainsKey($name)) {
+            $counts[$name] = $counts[$name] + 1
+        } else {
+            $counts[$name] = 1
         }
+    }
+    return $counts
+}
 
-        $taskkillExe = Join-Path $operatingSystem.WindowsDirectory "System32\taskkill.exe"
-        $pidArguments = ($ProcessIds | ForEach-Object { " /PID " + $_ }) -join ""
-
-        foreach ($allowedName in $AllowedNames) {
-            if ($allowedName -notmatch '^[A-Za-z0-9._-]+$') {
-                $errors += "некорректное имя процесса: " + $allowedName
-                continue
-            }
-
-            $commandLine = '"' + $taskkillExe + '" /F /FI "IMAGENAME eq ' + $allowedName + '"' + $pidArguments
-            $createResult = Invoke-CimMethod -CimSession $CimSession -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $commandLine } -OperationTimeoutSec 5
-            if ($createResult.ReturnValue -eq 0) {
-                $started = $true
+# Заполняет $Owners (номер сеанса -> пользователь). Предупреждения пишет в вывод.
+function Resolve-Owners([string]$ServerName, [object[]]$Processes, [hashtable]$Owners) {
+    Write-Output "STAGE|Определение пользователей сеансов через quser"
+    $lookup = Get-SessionOwnerLookup $ServerName
+    Write-Output ("TIMING|quser|" + $lookup.ElapsedMs)
+    if ($lookup.ErrorText) {
+        Write-Output ("WARN_QUSER|" + $lookup.ErrorText)
+    }
+    foreach ($sessionKey in $lookup.Owners.Keys) {
+        $Owners[[int]$sessionKey] = $lookup.Owners[$sessionKey]
+    }
+    $getOwnerUnavailable = $false
+    foreach ($process in $Processes) {
+        $sessionId = [int]$process.SessionId
+        if ($Owners.ContainsKey($sessionId) -or $getOwnerUnavailable) {
+            continue
+        }
+        try {
+            $info = Invoke-CimMethod -InputObject $process -MethodName GetOwner -OperationTimeoutSec 15 -ErrorAction Stop
+            if ($info.ReturnValue -eq 0 -and $info.User) {
+                $Owners[$sessionId] = "$($info.Domain)\$($info.User)"
             } else {
-                $errors += "taskkill.exe не запущен, код " + $createResult.ReturnValue
+                throw ("GetOwner вернул код " + $info.ReturnValue)
+            }
+        } catch {
+            Write-Output ("WARN_OWNER|" + $process.ProcessId + "|" + (Format-Reason $_.Exception.Message))
+            $getOwnerUnavailable = $true
+        }
+    }
+}
+
+function Get-OwnerLabel([hashtable]$Owners, $Process) {
+    $sessionId = [int]$Process.SessionId
+    if ($Owners.ContainsKey($sessionId)) {
+        return (Format-Reason ([string]$Owners[$sessionId]))
+    }
+    return "неизвестно"
+}
+
+function Get-TaskkillPath($CimSession) {
+    $os = Get-CimInstance -CimSession $CimSession -ClassName Win32_OperatingSystem -Property WindowsDirectory -OperationTimeoutSec 20
+    $windowsDirectory = ([string]$os.WindowsDirectory).Trim()
+    if ([string]::IsNullOrWhiteSpace($windowsDirectory)) {
+        throw "не удалось определить каталог Windows"
+    }
+    return ($windowsDirectory.TrimEnd([char]'\') + "\System32\taskkill.exe")
+}
+
+# Запускает команду на сервере и ждёт, пока она завершится. Create возвращается
+# сразу после старта: без ожидания результат проверялся бы раньше, чем taskkill
+# успел отработать (на загруженном сервере он перебирает процессы секундами).
+function Invoke-RemoteCommandAndWait($CimSession, [string]$CommandLine, [string]$ImageName, [int]$TimeoutMs) {
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $created = Invoke-CimMethod -CimSession $CimSession -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $CommandLine } -OperationTimeoutSec 20
+    $code = [uint32]$created.ReturnValue
+    if ($code -ne 0) {
+        return [PSCustomObject]@{ Started = $false; Finished = $false; ElapsedMs = $timer.ElapsedMilliseconds; ErrorText = ("запуск не выполнен: " + (Get-Win32ProcessCodeText $code)) }
+    }
+    $filter = "ProcessId=" + [uint32]$created.ProcessId + " and Name='" + $ImageName + "'"
+    $finished = $false
+    while ($true) {
+        $alive = @(Get-CimInstance -CimSession $CimSession -ClassName Win32_Process -Filter $filter -Property ProcessId -OperationTimeoutSec 15)
+        if ($alive.Count -eq 0) {
+            $finished = $true
+            break
+        }
+        if ($timer.ElapsedMilliseconds -ge $TimeoutMs) {
+            break
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    return [PSCustomObject]@{ Started = $true; Finished = $finished; ElapsedMs = $timer.ElapsedMilliseconds; ErrorText = "" }
+}
+
+# taskkill /F пакетами по имени образа. Фильтр IMAGENAME — защита: даже если PID
+# успел достаться другому процессу, taskkill его не тронет. Пишет STEP_WARN.
+function Invoke-TaskkillStep($CimSession, [object[]]$Processes) {
+    try {
+        $taskkillPath = Get-TaskkillPath $CimSession
+    } catch {
+        Write-Output ("STEP_WARN|taskkill|" + (Format-Reason $_.Exception.Message))
+        return
+    }
+    foreach ($group in ($Processes | Group-Object Name)) {
+        $imageName = [string]$group.Name
+        if ($imageName -notmatch '^[A-Za-z0-9._-]+$') {
+            Write-Output ("STEP_WARN|taskkill|некорректное имя процесса: " + (Format-Reason $imageName))
+            continue
+        }
+        $groupProcesses = @($group.Group)
+        for ($offset = 0; $offset -lt $groupProcesses.Count; $offset += $TaskkillPidsPerCall) {
+            $last = [Math]::Min($offset + $TaskkillPidsPerCall, $groupProcesses.Count) - 1
+            $pidArguments = ($groupProcesses[$offset..$last] | ForEach-Object { " /PID " + $_.ProcessId }) -join ""
+            $commandLine = '"' + $taskkillPath + '" /F /FI "IMAGENAME eq ' + $imageName + '"' + $pidArguments
+            try {
+                $result = Invoke-RemoteCommandAndWait $CimSession $commandLine "taskkill.exe" $TaskkillTimeoutMs
+                if (-not $result.Started) {
+                    Write-Output ("STEP_WARN|taskkill|" + $result.ErrorText)
+                } elseif (-not $result.Finished) {
+                    Write-Output ("STEP_WARN|taskkill|не завершился за " + [int]($TaskkillTimeoutMs / 1000) + " с")
+                }
+            } catch {
+                Write-Output ("STEP_WARN|taskkill|" + (Format-Reason $_.Exception.Message))
             }
         }
+    }
+}
 
-        if ($started) {
-            $pidFilter = ($ProcessIds | ForEach-Object { "ProcessId=" + $_ }) -join " or "
-            $verifyTimer = [Diagnostics.Stopwatch]::StartNew()
-            do {
-                $remaining.Clear()
-                $remainingProcesses = @(Get-CimInstance -CimSession $CimSession -ClassName Win32_Process -Filter $pidFilter -OperationTimeoutSec 5)
-                foreach ($process in $remainingProcesses) {
-                    $remaining[[int]$process.ProcessId] = $process
-                }
-                if ($remaining.Count -eq 0 -or $verifyTimer.ElapsedMilliseconds -ge 1000) {
-                    break
-                }
-                Start-Sleep -Milliseconds 100
-            } while ($true)
-            $verified = $true
+# Win32_Process.Terminate: синхронный вызов с кодом ответа — точная причина,
+# если процесс не завершается. Пустая строка — запрос принят.
+function Invoke-CimTerminate($Process) {
+    try {
+        $result = Invoke-CimMethod -InputObject $Process -MethodName Terminate -Arguments @{ Reason = [uint32]0 } -OperationTimeoutSec 15 -ErrorAction Stop
+        $code = [uint32]$result.ReturnValue
+        if ($code -eq 0) {
+            return ""
         }
+        return (Get-Win32ProcessCodeText $code)
     } catch {
-        $errors += $_.Exception.Message.Replace("|", "/").Replace([char]13, " ").Replace([char]10, " ")
+        $exception = $_.Exception
+        # Процесс завершился между проверками — это не ошибка.
+        if ($exception.GetType().FullName -eq "Microsoft.Management.Infrastructure.CimException" -and [string]$exception.NativeErrorCode -eq "NotFound") {
+            return ""
+        }
+        return (Format-Reason $exception.Message)
+    }
+}
+
+# Ждёт выхода процессов и возвращает те, что живы к истечению срока.
+# TimeoutMs = 0 — одна проверка без ожидания.
+function Wait-ProcessesGone($CimSession, [object[]]$Processes, [int]$TimeoutMs) {
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $pending = @($Processes)
+    while ($pending.Count -gt 0) {
+        $filter = ($pending | ForEach-Object { "ProcessId=" + $_.ProcessId }) -join " or "
+        $alive = @(Get-CimInstance -CimSession $CimSession -ClassName Win32_Process -Filter $filter -Property ProcessId,Name,CreationDate -OperationTimeoutSec 15)
+        $aliveKeys = @{}
+        foreach ($process in $alive) {
+            $aliveKeys[(Get-ProcessKey $process)] = $true
+        }
+        $pending = @($pending | Where-Object { $aliveKeys.ContainsKey((Get-ProcessKey $_)) })
+        if ($pending.Count -eq 0 -or $timer.ElapsedMilliseconds -ge $TimeoutMs) {
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return $pending
+}
+
+function Get-KeySet([object[]]$Processes) {
+    $keys = @{}
+    foreach ($process in $Processes) {
+        $keys[(Get-ProcessKey $process)] = $true
+    }
+    return $keys
+}
+
+# Протокол вывода:
+#   VARIANT|имя|количество          другая 1С, не входит в список завершения
+#   GONE|PID|причина                выбранный PID уже не выполняется
+#   PROBE|taskkill|ok/slow/fail|мс|подробности   (только тест)
+#   PLAN|PID|сеанс|имя|владелец     был бы завершён (только тест)
+#   STEP_WARN|шаг|причина           шаг не сработал, используется следующий
+#   KILLED|PID|сеанс|имя|владелец|способ
+#   KILL_FAIL|PID|владелец|причина
+#   KILL_PENDING|PID|владелец|причина
+function Invoke-TerminateAction($CimSession, [string]$ServerName, [string[]]$Names, [int[]]$RequestedIds, [bool]$IsDryRun) {
+    Write-Output "STAGE|Поиск процессов"
+    $queryTimer = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $targets = @(Get-TargetProcesses $CimSession $Names $RequestedIds)
+    } catch {
+        throw ("Поиск процессов не завершён: " + $_.Exception.Message)
+    }
+    Write-Timing "Поиск процессов" $queryTimer
+
+    foreach ($id in $RequestedIds) {
+        if (-not ($targets | Where-Object { [int]$_.ProcessId -eq $id })) {
+            Write-Output ("GONE|" + $id + "|процесс уже не выполняется или это не " + ($Names -join ", "))
+        }
     }
 
-    return [PSCustomObject]@{
-        Started = $started
-        Verified = $verified
-        Remaining = $remaining
-        ErrorText = ($errors -join "; ")
+    if ($RequestedIds.Count -eq 0) {
+        try {
+            $variants = Get-OtherOneCVariants $CimSession $Names
+            foreach ($name in $variants.Keys) {
+                Write-Output ("VARIANT|" + $name + "|" + $variants[$name])
+            }
+        } catch {
+            Write-Output ("WARN_VARIANT|" + (Format-Reason $_.Exception.Message))
+        }
+    }
+
+    if ($targets.Count -eq 0) {
+        if ($RequestedIds.Count -eq 0) {
+            Write-Output "NONE_FOUND"
+        }
+        return
+    }
+
+    $owners = @{}
+    Resolve-Owners $ServerName $targets $owners
+
+    if ($IsDryRun) {
+        # Без завершения проверяем весь путь запуска: taskkill с фильтром по
+        # несуществующему имени стартует на сервере, перебирает процессы и
+        # ничего не завершает. Время его работы — оценка шага 1 на этом сервере.
+        Write-Output "STAGE|Тест: пробный запуск taskkill без завершения"
+        try {
+            $taskkillPath = Get-TaskkillPath $CimSession
+            $probe = Invoke-RemoteCommandAndWait $CimSession ('"' + $taskkillPath + '" /FI "IMAGENAME eq fsadmin-dryrun-probe.exe"') "taskkill.exe" $TaskkillTimeoutMs
+            if (-not $probe.Started) {
+                Write-Output ("PROBE|taskkill|fail|" + $probe.ElapsedMs + "|" + $probe.ErrorText)
+            } elseif (-not $probe.Finished) {
+                Write-Output ("PROBE|taskkill|slow|" + $probe.ElapsedMs + "|не завершился за " + [int]($TaskkillTimeoutMs / 1000) + " с")
+            } else {
+                Write-Output ("PROBE|taskkill|ok|" + $probe.ElapsedMs + "|")
+            }
+        } catch {
+            Write-Output ("PROBE|taskkill|fail|0|" + (Format-Reason $_.Exception.Message))
+        }
+
+        $stillRunning = Get-KeySet @(Wait-ProcessesGone $CimSession $targets 0)
+        foreach ($process in $targets) {
+            if ($stillRunning.ContainsKey((Get-ProcessKey $process))) {
+                Write-Output ("PLAN|" + $process.ProcessId + "|" + $process.SessionId + "|" + $process.Name + "|" + (Get-OwnerLabel $owners $process))
+            } else {
+                Write-Output ("GONE|" + $process.ProcessId + "|закрылся сам во время проверки")
+            }
+        }
+        return
+    }
+
+    $actionTimer = [Diagnostics.Stopwatch]::StartNew()
+    $method = @{}
+    $failure = @{}
+
+    Write-Output "STAGE|Завершение: taskkill /F"
+    Invoke-TaskkillStep $CimSession $targets
+    $survivors = @(Wait-ProcessesGone $CimSession $targets $AfterTaskkillGraceMs)
+    $survivorKeys = Get-KeySet $survivors
+    foreach ($process in $targets) {
+        $key = Get-ProcessKey $process
+        if (-not $survivorKeys.ContainsKey($key)) {
+            $method[$key] = "taskkill"
+        }
+    }
+
+    if ($survivors.Count -gt 0) {
+        Write-Output "STAGE|Завершение оставшихся: Win32_Process.Terminate"
+        foreach ($process in $survivors) {
+            $reason = Invoke-CimTerminate $process
+            if ($reason) {
+                $failure[(Get-ProcessKey $process)] = $reason
+            }
+        }
+        Write-Output "STAGE|Ожидание выхода процессов"
+        $remainingKeys = Get-KeySet @(Wait-ProcessesGone $CimSession $survivors $ExitWaitTimeoutMs)
+        foreach ($process in $survivors) {
+            $key = Get-ProcessKey $process
+            if (-not $remainingKeys.ContainsKey($key)) {
+                $method[$key] = "Terminate"
+                $failure.Remove($key)
+            }
+        }
+    }
+    Write-Timing "Завершение процессов" $actionTimer
+
+    foreach ($process in $targets) {
+        $key = Get-ProcessKey $process
+        $owner = Get-OwnerLabel $owners $process
+        if ($method.ContainsKey($key)) {
+            Write-Output ("KILLED|" + $process.ProcessId + "|" + $process.SessionId + "|" + $process.Name + "|" + $owner + "|" + $method[$key])
+        } elseif ($failure.ContainsKey($key)) {
+            Write-Output ("KILL_FAIL|" + $process.ProcessId + "|" + $owner + "|" + $failure[$key])
+        } else {
+            Write-Output ("KILL_PENDING|" + $process.ProcessId + "|" + $owner + "|завершение принято, но процесс не вышел за " + [int]($ExitWaitTimeoutMs / 1000) + " с")
+        }
     }
 }
 
@@ -256,54 +552,22 @@ try {
             Where-Object { $_ -ne "" }
     )
 
-    if ($Action -eq "killids") {
-        if ([string]::IsNullOrWhiteSpace($ProcessIds)) {
-            Write-ControlledError "Не указаны PID для завершения"
-            exit 1
-        }
-
-        $terminateTimer = [Diagnostics.Stopwatch]::StartNew()
-        $validPids = @()
-        foreach ($idText in $ProcessIds.Split(",")) {
-            $pidValue = 0
-            if (-not [int]::TryParse($idText.Trim(), [ref]$pidValue) -or $pidValue -le 0) {
-                Write-Output ("KILL_FAIL|" + $idText + "|некорректный PID")
-                continue
-            }
-            $validPids += $pidValue
-        }
-
-        if ($validPids.Count -eq 0) {
-            Write-Timing "Завершение выбранных PID" $terminateTimer
-            exit 0
-        }
-
-        $killResult = Invoke-FilteredTaskkill $session $allowedNames $validPids
-        if (-not [string]::IsNullOrWhiteSpace($killResult.ErrorText)) {
-            Write-Output ("KILL_FAIL|0|" + $killResult.ErrorText)
-        }
-
-        foreach ($pidValue in $validPids) {
-            if (-not $killResult.Started) {
-                Write-Output ("KILL_FAIL|" + $pidValue + "|taskkill.exe не был запущен")
-                continue
-            }
-            if (-not $killResult.Verified) {
-                Write-Output ("KILL_FAIL|" + $pidValue + "|не удалось подтвердить завершение процесса")
-                continue
-            }
-            if ($killResult.Remaining.ContainsKey([int]$pidValue)) {
-                $remainingProcess = $killResult.Remaining[[int]$pidValue]
-                if ($allowedNames -contains $remainingProcess.Name) {
-                    Write-Output ("KILL_FAIL|" + $pidValue + "|процесс всё ещё выполняется")
-                } else {
-                    Write-Output ("KILL_FAIL|" + $pidValue + "|PID уже принадлежит другому процессу: " + $remainingProcess.Name)
+    if ($Action -eq "terminate") {
+        $requestedIds = @()
+        if (-not [string]::IsNullOrWhiteSpace($ProcessIds)) {
+            foreach ($idText in $ProcessIds.Split(",")) {
+                $pidValue = 0
+                if (-not [int]::TryParse($idText.Trim(), [ref]$pidValue) -or $pidValue -le 0) {
+                    Write-Output ("KILL_FAIL|" + (Format-Reason $idText) + "|неизвестно|некорректный PID")
+                    continue
                 }
-            } else {
-                Write-Output ("KILLED|" + $pidValue + "|0|" + $allowedNames[0] + "|не проверялся")
+                $requestedIds += $pidValue
+            }
+            if ($requestedIds.Count -eq 0) {
+                exit 0
             }
         }
-        Write-Timing "Завершение выбранных PID" $terminateTimer
+        Invoke-TerminateAction $session $ComputerName $allowedNames $requestedIds ([bool]$DryRun)
         exit 0
     }
 
@@ -328,39 +592,6 @@ try {
     $quserHasOwners = $false
     $ownerLookupUnavailable = $false
 
-
-    if ($Action -eq "kill") {
-        $actionTimer = [Diagnostics.Stopwatch]::StartNew()
-        $processIdsToKill = @($processes | ForEach-Object { [int]$_.ProcessId })
-        $killResult = Invoke-FilteredTaskkill $session $allowedNames $processIdsToKill
-        if (-not [string]::IsNullOrWhiteSpace($killResult.ErrorText)) {
-            Write-Output ("KILL_FAIL|0|" + $killResult.ErrorText)
-        }
-
-        foreach ($process in $processes) {
-            $pidValue = [int]$process.ProcessId
-            if (-not $killResult.Started) {
-                Write-Output ("KILL_FAIL|" + $pidValue + "|taskkill.exe не был запущен")
-                continue
-            }
-            if (-not $killResult.Verified) {
-                Write-Output ("KILL_FAIL|" + $pidValue + "|не удалось подтвердить завершение процесса")
-                continue
-            }
-            if ($killResult.Remaining.ContainsKey($pidValue)) {
-                $remainingProcess = $killResult.Remaining[$pidValue]
-                if ($allowedNames -contains $remainingProcess.Name) {
-                    Write-Output ("KILL_FAIL|" + $pidValue + "|процесс всё ещё выполняется")
-                } else {
-                    Write-Output ("KILL_FAIL|" + $pidValue + "|PID уже принадлежит другому процессу: " + $remainingProcess.Name)
-                }
-            } else {
-                Write-Output ("KILLED|" + $pidValue + "|" + $process.SessionId + "|" + $process.Name + "|не проверялся")
-            }
-        }
-        Write-Timing "Завершение всех процессов" $actionTimer
-        exit 0
-    }
     if ($Action -eq "find") {
         Write-Output "STAGE|Определение пользователей сеансов через quser"
         $lookup = Get-SessionOwnerLookup $ComputerName

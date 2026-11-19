@@ -219,7 +219,9 @@ func RunRemote(
 	ctx context.Context,
 	serverIP, defaultUser, password, action, processNames, message string,
 ) ([]string, error) {
-	return runRemote(ctx, serverIP, defaultUser, password, action, processNames, message, "", nil)
+	return runRemote(ctx, serverIP, defaultUser, password, remoteRequest{
+		action: action, processNames: processNames, message: message,
+	}, nil)
 }
 
 func RunRemoteWithProgress(
@@ -227,44 +229,22 @@ func RunRemoteWithProgress(
 	serverIP, defaultUser, password, action, processNames, message string,
 	progress ProgressFunc,
 ) ([]string, error) {
-	return runRemote(ctx, serverIP, defaultUser, password, action, processNames, message, "", progress)
+	return runRemote(ctx, serverIP, defaultUser, password, remoteRequest{
+		action: action, processNames: processNames, message: message,
+	}, progress)
 }
 
-func RunRemoteKillPIDs(ctx context.Context, serverIP, defaultUser, password string, pids []int) ([]string, error) {
-	if len(pids) == 0 {
-		return nil, fmt.Errorf("не указаны PID для завершения")
-	}
-
-	ids := make([]string, 0, len(pids))
-	for _, pid := range pids {
-		if pid <= 0 {
-			return nil, fmt.Errorf("некорректный PID: %d", pid)
-		}
-		ids = append(ids, strconv.Itoa(pid))
-	}
-	return runRemote(
-		ctx,
-		serverIP,
-		defaultUser,
-		password,
-		"killids",
-		constandstruct.TargetProcessNames,
-		"",
-		strings.Join(ids, ","),
-		nil,
-	)
-}
-
-func RunRemoteKillPIDsWithProgress(
+// RunRemoteTerminate запускает на сервере единый сценарий завершения 1С.
+// Пустой pids — все процессы из TargetProcessNames; иначе только указанные PID
+// (и только если это процессы из списка). dryRun проходит тот же путь, но
+// вместо завершения пробно запускает taskkill, ничего не завершая.
+func RunRemoteTerminate(
 	ctx context.Context,
 	serverIP, defaultUser, password string,
 	pids []int,
+	dryRun bool,
 	progress ProgressFunc,
 ) ([]string, error) {
-	if len(pids) == 0 {
-		return nil, fmt.Errorf("не указаны PID для завершения")
-	}
-
 	ids := make([]string, 0, len(pids))
 	for _, pid := range pids {
 		if pid <= 0 {
@@ -272,17 +252,12 @@ func RunRemoteKillPIDsWithProgress(
 		}
 		ids = append(ids, strconv.Itoa(pid))
 	}
-	return runRemote(
-		ctx,
-		serverIP,
-		defaultUser,
-		password,
-		"killids",
-		constandstruct.TargetProcessNames,
-		"",
-		strings.Join(ids, ","),
-		progress,
-	)
+	return runRemote(ctx, serverIP, defaultUser, password, remoteRequest{
+		action:       "terminate",
+		processNames: constandstruct.TargetProcessNames,
+		processIDs:   strings.Join(ids, ","),
+		dryRun:       dryRun,
+	}, progress)
 }
 
 // RunRemoteScript выполняет пользовательский PowerShell-сценарий через
@@ -566,9 +541,43 @@ func commandRemoteTimeoutSeconds(ctx context.Context) int {
 	return seconds
 }
 
+// remoteRequest — параметры вызова сценария PsScript.
+type remoteRequest struct {
+	action       string
+	processNames string
+	message      string
+	processIDs   string
+	dryRun       bool
+}
+
+// remoteScriptArgs собирает аргументы powershell.exe для PsScript. Пароль сюда
+// не попадает: он идёт через stdin.
+func remoteScriptArgs(scriptPath, serverIP, defaultUser string, request remoteRequest) []string {
+	args := []string{
+		"-NoProfile",
+		"-NonInteractive",
+		"-ExecutionPolicy", "RemoteSigned",
+		"-File", scriptPath,
+		"-ComputerName", serverIP,
+		"-Action", request.action,
+		"-ProcessNames", request.processNames,
+		"-Message", request.message,
+		"-DefaultUser", defaultUser,
+		"-CredentialFromStdin",
+	}
+	if request.processIDs != "" {
+		args = append(args, "-ProcessIds", request.processIDs)
+	}
+	if request.dryRun {
+		args = append(args, "-DryRun")
+	}
+	return args
+}
+
 func runRemote(
 	ctx context.Context,
-	serverIP, defaultUser, password, action, processNames, message, processIDs string,
+	serverIP, defaultUser, password string,
+	request remoteRequest,
 	progress ProgressFunc,
 ) ([]string, error) {
 	serverIP = strings.TrimSpace(serverIP)
@@ -594,23 +603,7 @@ func runRemote(
 	}
 	defer removeTempScript(scriptPath)
 
-	args := []string{
-		"-NoProfile",
-		"-NonInteractive",
-		"-ExecutionPolicy", "RemoteSigned",
-		"-File", scriptPath,
-		"-ComputerName", serverIP,
-		"-Action", action,
-		"-ProcessNames", processNames,
-		"-Message", message,
-		"-DefaultUser", defaultUser,
-		"-CredentialFromStdin",
-	}
-	if processIDs != "" {
-		args = append(args, "-ProcessIds", processIDs)
-	}
-
-	cmd := exec.CommandContext(ctx, "powershell.exe", args...)
+	cmd := exec.CommandContext(ctx, "powershell.exe", remoteScriptArgs(scriptPath, serverIP, defaultUser, request)...)
 	cmd.SysProcAttr = hideWindowAttr()
 	cmd.Stdin = strings.NewReader(encodePasswordForStdin(password) + "\n")
 

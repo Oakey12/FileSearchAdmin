@@ -122,6 +122,10 @@ export function TestFinish(arg1, arg2, arg3) {
   return window['go']['main']['App']['TestFinish'](arg1, arg2, arg3);
 }
 
+export function TestFinishEmployees(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TestFinishEmployees'](arg1, arg2, arg3);
+}
+
 export function UninstallProgram(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['UninstallProgram'](arg1, arg2, arg3, arg4);
 }

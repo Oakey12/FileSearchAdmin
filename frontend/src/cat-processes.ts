@@ -12,6 +12,7 @@ export class ProcessesPanel {
   private selected = new Set<number>()
   private listEl!: HTMLElement
   private finishSelectedBtn!: HTMLButtonElement
+  private testSelectedBtn!: HTMLButtonElement
 
   constructor(private root: HTMLElement, private creds: Creds) {
     this.build()
@@ -30,7 +31,7 @@ export class ProcessesPanel {
       if (targets) Go.SearchProcesses(targets, this.creds.login, this.creds.password)
     })
     const testFinishBtn = button('Тест закрытия 1С')
-    testFinishBtn.title = 'Показать в журнале, у каких пользователей закрылась бы 1С. Ничего не завершает.'
+    testFinishBtn.title = 'Пройти алгоритм завершения без закрытия процессов: у кого 1С закрылась бы и готов ли сервер.'
     testFinishBtn.addEventListener('click', () => {
       const targets = this.creds.requireTargets()
       if (targets) Go.TestFinish(targets, this.creds.login, this.creds.password)
@@ -49,10 +50,17 @@ export class ProcessesPanel {
         Go.ScanEmployees(targets, this.creds.login, this.creds.password)
       }
     })
+    this.testSelectedBtn = button('Тест у выбранных')
+    this.testSelectedBtn.title = 'Пройти алгоритм завершения для отмеченных сотрудников без закрытия процессов.'
+    this.testSelectedBtn.disabled = true
+    this.testSelectedBtn.addEventListener('click', () => {
+      const chosen = this.chosenEmployees()
+      if (chosen.length > 0) Go.TestFinishEmployees(chosen, this.creds.login, this.creds.password)
+    })
     this.finishSelectedBtn = button('Завершить 1С у выбранных', 'danger')
     this.finishSelectedBtn.disabled = true
     this.finishSelectedBtn.addEventListener('click', () => this.finishSelected())
-    emp.append(actions(scanBtn, this.finishSelectedBtn))
+    emp.append(actions(scanBtn, this.testSelectedBtn, this.finishSelectedBtn))
     this.listEl = el('div', { class: 'result-list' })
     this.listEl.append(el('p', { class: 'hint', text: 'Список появится после сканирования.' }))
     emp.append(this.listEl)
@@ -77,7 +85,7 @@ export class ProcessesPanel {
     clear(this.listEl)
     if (list.length === 0) {
       this.listEl.append(el('p', { class: 'hint', text: 'Сотрудники с открытой 1С не найдены.' }))
-      this.finishSelectedBtn.disabled = true
+      this.reflectSelection()
       return
     }
     list.forEach((employee, index) => {
@@ -86,7 +94,7 @@ export class ProcessesPanel {
         if (checkbox.checked) this.selected.add(index)
         else this.selected.delete(index)
         row.classList.toggle('selected', checkbox.checked)
-        this.finishSelectedBtn.disabled = this.selected.size === 0
+        this.reflectSelection()
       })
       const pids = (employee.PIDs ?? []).join(', ')
       const row = el('label', { class: 'result-row' }, [
@@ -98,11 +106,21 @@ export class ProcessesPanel {
       ])
       this.listEl.append(row)
     })
-    this.finishSelectedBtn.disabled = true
+    this.reflectSelection()
+  }
+
+  private reflectSelection(): void {
+    const none = this.selected.size === 0
+    this.finishSelectedBtn.disabled = none
+    this.testSelectedBtn.disabled = none
+  }
+
+  private chosenEmployees(): EmployeeProcess[] {
+    return [...this.selected].map((i) => this.employees[i]).filter(Boolean)
   }
 
   private async finishSelected(): Promise<void> {
-    const chosen = [...this.selected].map((i) => this.employees[i]).filter(Boolean)
+    const chosen = this.chosenEmployees()
     if (chosen.length === 0) return
     const ok = await confirmAction('Подтверждение', `Завершить 1С у выбранных сотрудников: ${chosen.length}?`)
     if (ok) Go.FinishEmployees(chosen, this.creds.login, this.creds.password)

@@ -104,10 +104,17 @@ func (a *App) FinishAll(targets []constandstruct.Server, user, password string) 
 	a.stream(func() { ops.FinishProcess(a.ctx, targets, user, password, a.logLine) })
 }
 
-// TestFinish — сухой прогон закрытия 1С: показывает в журнале, у каких
-// пользователей на целевых серверах 1С закрылась бы, ничего не завершая.
+// TestFinish — тест завершения 1С на целевых серверах: тот же алгоритм, что и
+// FinishAll, но процессы не завершаются. Журнал показывает, у кого 1С закрылась
+// бы и готов ли сервер к завершению.
 func (a *App) TestFinish(targets []constandstruct.Server, user, password string) {
 	a.stream(func() { ops.TestFinishProcess(a.ctx, targets, user, password, a.logLine) })
+}
+
+// TestFinishEmployees — тест завершения 1С у выбранных сотрудников, без
+// завершения процессов.
+func (a *App) TestFinishEmployees(employees []constandstruct.EmployeeProcess, user, password string) {
+	a.stream(func() { ops.TestFinishEmployees(a.ctx, employees, user, password, a.logLine) })
 }
 
 // ScanEmployees ищет сотрудников с открытой 1С; результат уходит событием
