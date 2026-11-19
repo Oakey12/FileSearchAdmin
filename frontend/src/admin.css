@@ -168,9 +168,11 @@ body {
 
 .field { display: grid; gap: 6px; min-width: 0; }
 .field > label { font-size: 12px; color: var(--text-2); font-weight: 500; }
-.field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.field-head label { font-size: 12px; color: var(--text-2); font-weight: 500; }
-.field-head-actions { display: flex; align-items: center; gap: 12px; }
+.field-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.field-head label { font-size: 12px; color: var(--text-2); font-weight: 500; white-space: nowrap; }
+.field-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.field-head-actions .link-btn { white-space: nowrap; }
+.field-head .srv-count { color: var(--text-3); font-weight: 400; font-variant-numeric: tabular-nums; }
 
 /* --- Поля ввода --- */
 .inp {

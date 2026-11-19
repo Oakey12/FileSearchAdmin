@@ -24,6 +24,8 @@ export class Creds {
   private loginInput!: HTMLInputElement
   private passwordInput!: HTMLInputElement
   private listEl!: HTMLElement
+  private selectAllBtn!: HTMLButtonElement
+  private countEl!: HTMLElement
 
   constructor() {
     this.root = byId('conn')
@@ -42,9 +44,12 @@ export class Creds {
     exampleBtn.addEventListener('click', () => this.copyExample())
     const importBtn = el('button', { class: 'link-btn', type: 'button', text: 'Загрузить JSON…', title: 'Загрузить список серверов из JSON-файла' })
     importBtn.addEventListener('click', () => this.importServers())
+    this.selectAllBtn = el('button', { class: 'link-btn', type: 'button', text: 'Выбрать все' }) as HTMLButtonElement
+    this.selectAllBtn.addEventListener('click', () => this.toggleAll())
+    this.countEl = el('span', { class: 'srv-count' })
     left.append(el('div', { class: 'field-head' }, [
-      el('label', { text: 'Серверы' }),
-      el('div', { class: 'field-head-actions' }, [exampleBtn, importBtn]),
+      el('label', {}, ['Серверы', this.countEl]),
+      el('div', { class: 'field-head-actions' }, [this.selectAllBtn, exampleBtn, importBtn]),
     ]))
     this.listEl = el('div', { class: 'servers' })
     this.listEl.append(el('div', { class: 'servers-empty', text: 'Загрузка списка…' }))
@@ -120,8 +125,32 @@ export class Creds {
     }
   }
 
+  /** Все ли серверы списка отмечены. */
+  private allSelected(): boolean {
+    return this.servers.length > 0 && this.servers.every((s) => this.selected.has(s.ip))
+  }
+
+  /** «Выбрать все», а если уже выбраны все — «Снять все». */
+  private toggleAll(): void {
+    if (this.allSelected()) this.selected.clear()
+    else for (const server of this.servers) this.selected.add(server.ip)
+    this.renderList()
+  }
+
+  /** Обновляет счётчик «выбрано N из M» и подпись кнопки. */
+  private updateSelectionInfo(): void {
+    const total = this.servers.length
+    const count = this.servers.filter((s) => this.selected.has(s.ip)).length
+    this.countEl.textContent = total > 0 ? ` · ${count} из ${total}` : ''
+    this.selectAllBtn.hidden = total === 0
+    const all = this.allSelected()
+    this.selectAllBtn.textContent = all ? 'Снять все' : 'Выбрать все'
+    this.selectAllBtn.title = all ? 'Снять отметку со всех серверов' : 'Отметить все серверы списка'
+  }
+
   private renderList(): void {
     clear(this.listEl)
+    this.updateSelectionInfo()
     if (this.servers.length === 0) {
       this.listEl.append(
         el('div', { class: 'servers-empty', text: 'Список серверов недоступен — используйте ручной ввод IP.' }),
@@ -134,6 +163,7 @@ export class Creds {
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) this.selected.add(server.ip)
         else this.selected.delete(server.ip)
+        this.updateSelectionInfo()
       })
       const row = el('label', { class: 'server-row' }, [
         checkbox,
