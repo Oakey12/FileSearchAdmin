@@ -18,6 +18,9 @@ type App struct {
 	updateMu sync.Mutex
 	release  *update.Release
 
+	// sysInfo — ответы последнего сбора «О системе» для выгрузки в Excel.
+	sysInfo sysInfoStore
+
 	// onStatus — точка подмены для тестов; в бою nil и статус уходит событием.
 	onStatus func(bool)
 }

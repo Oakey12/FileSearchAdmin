@@ -11,6 +11,8 @@ export function CheckUpdate():Promise<main.UpdateInfo>;
 
 export function DeleteRemoteFile(arg1:string,arg2:string,arg3:string,arg4:constandstruct.RemoteFile):Promise<void>;
 
+export function ExportSystemInfo():Promise<string>;
+
 export function FindApplication(arg1:string,arg2:string,arg3:string,arg4:string):Promise<constandstruct.ApplicationCheck>;
 
 export function FinishAll(arg1:Array<constandstruct.Server>,arg2:string,arg3:string):Promise<void>;

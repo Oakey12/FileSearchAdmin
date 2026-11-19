@@ -16,6 +16,7 @@ export class SystemPanel {
   private detailEl!: HTMLElement
   private hintEl!: HTMLElement
   private copyBtn!: HTMLButtonElement
+  private exportBtn!: HTMLButtonElement
 
   constructor(private root: HTMLElement, private creds: Creds) {
     this.build()
@@ -31,7 +32,11 @@ export class SystemPanel {
     this.copyBtn = button('Копировать')
     this.copyBtn.disabled = true
     this.copyBtn.addEventListener('click', () => this.copyActive())
-    panel.append(actions(scanBtn, this.copyBtn))
+    this.exportBtn = button('Выгрузить в Excel')
+    this.exportBtn.title = 'Таблица .xlsx: строка на каждый опрошенный компьютер, все сведения по столбцам'
+    this.exportBtn.disabled = true
+    this.exportBtn.addEventListener('click', () => void this.exportExcel())
+    panel.append(actions(scanBtn, this.copyBtn, this.exportBtn))
     this.hintEl = el('p', { class: 'hint', text: 'Сведения появятся после сбора.' })
     this.tabsEl = el('div', { class: 'sys-tabs' })
     this.detailEl = el('dl', { class: 'kv' })
@@ -49,8 +54,21 @@ export class SystemPanel {
     clear(this.tabsEl)
     clear(this.detailEl)
     this.copyBtn.disabled = true
+    this.exportBtn.disabled = true
     this.hintEl.textContent = `Опрашиваю компьютеров: ${targets.length}…`
     Go.ScanSystemInfoAll(targets, this.creds.login, this.creds.password)
+  }
+
+  private async exportExcel(): Promise<void> {
+    this.exportBtn.disabled = true
+    try {
+      const path = await Go.ExportSystemInfo()
+      if (path) toast(`Таблица сохранена: ${path}`)
+    } catch (err) {
+      toast(String(err))
+    } finally {
+      this.exportBtn.disabled = this.results.size === 0
+    }
   }
 
   private addResult(result: SystemInfoResult): void {
@@ -58,6 +76,7 @@ export class SystemPanel {
     if (!this.results.has(key)) this.order.push(key)
     this.results.set(key, result)
     this.renderTabs()
+    this.exportBtn.disabled = false
     if (!this.activeIp) void this.select(key)
     this.hintEl.textContent = `Получено ответов: ${this.results.size}.`
   }

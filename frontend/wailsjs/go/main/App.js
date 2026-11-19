@@ -18,6 +18,10 @@ export function DeleteRemoteFile(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['DeleteRemoteFile'](arg1, arg2, arg3, arg4);
 }
 
+export function ExportSystemInfo() {
+  return window['go']['main']['App']['ExportSystemInfo']();
+}
+
 export function FindApplication(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['FindApplication'](arg1, arg2, arg3, arg4);
 }
