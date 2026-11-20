@@ -1,6 +1,6 @@
 // Категория «Оповещения»: рассылка сообщения пользователям на серверах (msg.exe).
 
-import { Go, type MessageTemplate } from './go'
+import { Go, type MessageTemplate, type Server } from './go'
 import { el } from './dom'
 import { toast } from './toast'
 import { categoryHeader, card, actions, button } from './ui'
@@ -22,21 +22,32 @@ export class NotifyPanel {
       if (value) textarea.value = value
     })
     void this.loadTemplates(dropdown)
-    const notifyBtn = button('Оповестить', 'primary')
-    notifyBtn.addEventListener('click', () => {
+    // Общая проверка перед рассылкой и тестом.
+    const prepare = (): { targets: Server[]; message: string } | null => {
       const targets = this.creds.requireTargets()
       const message = textarea.value.trim()
-      if (!targets) return
+      if (!targets) return null
       if (!message) {
         toast('Введите текст оповещения.')
-        return
+        return null
       }
-      Go.Notify(targets, this.creds.login, this.creds.password, message)
+      return { targets, message }
+    }
+    const testBtn = button('Тестовое сообщение')
+    testBtn.title = 'Пройти путь рассылки без отправки: в журнале — кому сообщение дошло бы и запускается ли msg.exe на сервере.'
+    testBtn.addEventListener('click', () => {
+      const ready = prepare()
+      if (ready) Go.TestNotify(ready.targets, this.creds.login, this.creds.password, ready.message)
+    })
+    const notifyBtn = button('Оповестить', 'primary')
+    notifyBtn.addEventListener('click', () => {
+      const ready = prepare()
+      if (ready) Go.Notify(ready.targets, this.creds.login, this.creds.password, ready.message)
     })
     panel.append(
       el('div', { class: 'field' }, [el('label', { text: 'Шаблон' }), dropdown.el]),
       el('div', { class: 'field' }, [el('label', { text: 'Сообщение' }), textarea]),
-      actions(notifyBtn),
+      actions(testBtn, notifyBtn),
     )
     this.root.append(panel)
   }

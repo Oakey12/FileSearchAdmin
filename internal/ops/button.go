@@ -27,6 +27,9 @@ var (
 // транспорт через PowerShell/CIM, в тестах заменяется заглушкой.
 var runRemoteWithProgress = remotefunc.RunRemoteWithProgress
 
+// runRemoteNotify — точка подмены для тестов рассылки и теста оповещения.
+var runRemoteNotify = remotefunc.RunRemoteNotify
+
 func beginOperation(parent context.Context, logLine func(string)) (context.Context, bool) {
 	operationStateMu.Lock()
 	defer operationStateMu.Unlock()
@@ -670,81 +673,227 @@ func currentUserDisplayName() string {
 	return strings.TrimSpace(current.Name)
 }
 
+// Notify рассылает оповещение всем пользовательским сеансам выбранных серверов.
 func Notify(ctx context.Context, targets []constandstruct.Server,
 	user, password, message string, logLine func(string),
 ) {
+	runNotifyOperation(ctx, targets, user, password, message, false, logLine)
+}
+
+// TestNotify — тестовое сообщение: тот же путь, что и рассылка, но ничего не
+// отправляется. В журнале — кому сообщение дошло бы и запускается ли msg.exe.
+func TestNotify(ctx context.Context, targets []constandstruct.Server,
+	user, password, message string, logLine func(string),
+) bool {
+	return runNotifyOperation(ctx, targets, user, password, message, true, logLine)
+}
+
+// runNotifyOperation — общий конвейер рассылки и теста: dryRun доходит до
+// сценария на сервере и разводит их только перед запуском msg.exe.
+func runNotifyOperation(ctx context.Context, targets []constandstruct.Server,
+	user, password, message string, dryRun bool, logLine func(string),
+) bool {
 	if len(targets) == 0 {
 		logLine("Выберите хотя бы один сервер или введите IP вручную.")
-		return
+		return false
 	}
 	message = strings.TrimSpace(message)
 	if message == "" {
 		logLine("Введите текст оповещения.")
-		return
+		return false
 	}
 	user, password, ok := validateCredentials(user, password, logLine)
 	if !ok {
-		return
+		return false
 	}
 	message = formatNotificationMessage(user, currentUserDisplayName(), message)
 	operationBaseCtx, started := beginOperation(ctx, logLine)
 	if !started {
-		return
+		return false
 	}
 
 	go func() {
 		defer finishOperation()
 		operationCtx, cancel := context.WithTimeout(operationBaseCtx, constandstruct.OperationTimeout)
 		defer cancel()
+		title := "Оповещение"
+		timeout := constandstruct.MutationServerTimeout
+		if dryRun {
+			title = "Тест оповещения"
+			timeout = constandstruct.ServerTimeout
+			logLine("=== Тестовое сообщение: тот же путь, что и рассылка, но ничего не отправляется ===")
+			logLine("Текст, который увидят пользователи: «" + notifyDisplayText(message) + "»")
+		}
+
+		var totalMu sync.Mutex
+		var total notifyDrySummary
 		runTargets(operationCtx, targets, func(target constandstruct.Server) {
-			logLine(fmt.Sprintf("=== Оповещение на %s (%s) ===", target.Name, target.IP))
-			serverCtx, stop := context.WithTimeout(operationCtx, constandstruct.MutationServerTimeout)
-			finishStatus := startRemoteStatus(target, constandstruct.MutationServerTimeout, logLine)
-			lines, err := runRemoteWithProgress(serverCtx, target.IP, user, password, "notify", "", message, remoteProgressLogger(target, logLine))
+			logLine(fmt.Sprintf("=== %s на %s (%s) ===", title, target.Name, target.IP))
+			serverCtx, stop := context.WithTimeout(operationCtx, timeout)
+			finishStatus := startRemoteStatus(target, timeout, logLine)
+			lines, err := runRemoteNotify(serverCtx, target.IP, user, password, message, dryRun, remoteProgressLogger(target, logLine))
 			finishStatus(err)
 			stop()
 			if logCallError(operationCtx, target, err, logLine) {
 				return
 			}
 			if err != nil {
+				if dryRun {
+					totalMu.Lock()
+					total.failed++
+					totalMu.Unlock()
+				}
 				return
 			}
 			if text := remoteError(lines); text != "" {
 				logLine(fmt.Sprintf("%s: ошибка: %s", target.Name, text))
+				if dryRun {
+					totalMu.Lock()
+					total.failed++
+					totalMu.Unlock()
+				}
 				return
 			}
 			logRemoteWarnings(target, lines, logLine)
-			notificationSent := slices.ContainsFunc(lines, func(line string) bool {
-				return strings.HasPrefix(line, "NOTIFY_OK|")
-			})
-
-			if notificationSent {
-				logLine(fmt.Sprintf(
-					"%s: оповещение отправлено всем пользовательским сессиям.",
-					target.Name,
-				))
+			if dryRun {
+				summary := logNotifyDryResult(target, lines, logLine)
+				totalMu.Lock()
+				total.add(summary)
+				totalMu.Unlock()
 				return
 			}
-
-			for _, line := range lines {
-				if strings.HasPrefix(line, "NOTIFY_FAIL|") {
-					reason := strings.TrimPrefix(line, "NOTIFY_FAIL|")
-					logLine(fmt.Sprintf(
-						"%s: не удалось отправить оповещение: %s",
-						target.Name,
-						reason,
-					))
-					return
-				}
-			}
-
-			logLine(fmt.Sprintf(
-				"%s: сервер не подтвердил отправку оповещения.",
-				target.Name,
-			))
+			logNotifyResult(target, lines, logLine)
 		})
+		if dryRun {
+			logLine(fmt.Sprintf(
+				"--- Тест оповещения завершён: дойдёт на серверах %d из %d, получателей %d. Ничего не отправлено (это тест). ---",
+				total.ready, len(targets), total.recipients,
+			))
+			return
+		}
 		logLine("--- Рассылка завершена ---")
 	}()
+	return true
+}
+
+func logNotifyResult(target constandstruct.Server, lines []string, logLine func(string)) {
+	if slices.ContainsFunc(lines, func(line string) bool { return strings.HasPrefix(line, "NOTIFY_OK|") }) {
+		logLine(fmt.Sprintf("%s: оповещение отправлено всем пользовательским сессиям.", target.Name))
+		return
+	}
+	for _, line := range lines {
+		if reason, ok := strings.CutPrefix(line, "NOTIFY_FAIL|"); ok {
+			logLine(fmt.Sprintf("%s: не удалось отправить оповещение: %s", target.Name, reason))
+			return
+		}
+	}
+	logLine(fmt.Sprintf("%s: сервер не подтвердил отправку оповещения.", target.Name))
+}
+
+// notifyDisplayText — текст так, как его покажет msg.exe: сценарий заменяет
+// двойные кавычки на одинарные и переводы строк на пробелы.
+func notifyDisplayText(message string) string {
+	return strings.TrimSpace(strings.NewReplacer(`"`, "'", "\r", " ", "\n", " ").Replace(message))
+}
+
+type notifyDrySummary struct {
+	ready      int // серверов, где сообщение дойдёт
+	recipients int
+	failed     int
+}
+
+func (s *notifyDrySummary) add(other notifyDrySummary) {
+	s.ready += other.ready
+	s.recipients += other.recipients
+	s.failed += other.failed
+}
+
+func sessionState(state string) (label string, connected bool) {
+	lower := strings.ToLower(strings.TrimSpace(state))
+	switch {
+	case lower == "":
+		return "", true
+	case strings.HasPrefix(lower, "activ"), strings.HasPrefix(lower, "актив"):
+		return "", true
+	case strings.HasPrefix(lower, "disc"), strings.HasPrefix(lower, "диск"), strings.HasPrefix(lower, "отключ"):
+		return "сеанс отключён — сообщение может не увидеть", false
+	default:
+		return "состояние: " + state, true
+	}
+}
+
+// logNotifyDryResult разбирает ответ теста оповещения по серверу.
+func logNotifyDryResult(target constandstruct.Server, lines []string, logLine func(string)) notifyDrySummary {
+	var summary notifyDrySummary
+	var recipients []string
+	disconnected := 0
+	probeStatus, probeMs, probeDetail := "", "", ""
+	confirmed := false
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "NOTIFY_RECIPIENT|"):
+			parts := strings.SplitN(strings.TrimPrefix(line, "NOTIFY_RECIPIENT|"), "|", 3)
+			if len(parts) < 3 {
+				continue
+			}
+			label, connected := sessionState(parts[2])
+			entry := fmt.Sprintf("«%s» (сеанс %s", parts[1], parts[0])
+			if label != "" {
+				entry += "; " + label
+			}
+			recipients = append(recipients, entry+")")
+			if !connected {
+				disconnected++
+			}
+		case strings.HasPrefix(line, "NOTIFY_WARN|"):
+			logLine(fmt.Sprintf("%s: внимание — %s.", target.Name, strings.TrimPrefix(line, "NOTIFY_WARN|")))
+		case strings.HasPrefix(line, "NOTIFY_PROBE|"):
+			parts := strings.SplitN(strings.TrimPrefix(line, "NOTIFY_PROBE|"), "|", 3)
+			for len(parts) < 3 {
+				parts = append(parts, "")
+			}
+			probeStatus, probeMs, probeDetail = parts[0], parts[1], parts[2]
+		case strings.HasPrefix(line, "NOTIFY_DRY|"):
+			confirmed = true
+		case strings.HasPrefix(line, "NOTIFY_FAIL|"):
+			logLine(fmt.Sprintf("%s: сообщение НЕ дойдёт — %s", target.Name, strings.TrimPrefix(line, "NOTIFY_FAIL|")))
+			summary.failed++
+			return summary
+		}
+	}
+	if !confirmed {
+		logLine(fmt.Sprintf("%s: сервер не вернул результат теста.", target.Name))
+		summary.failed++
+		return summary
+	}
+
+	switch probeStatus {
+	case "ok":
+		logLine(fmt.Sprintf("%s: msg.exe на сервере запускается (%s мс).", target.Name, probeMs))
+	case "slow":
+		logLine(fmt.Sprintf("%s: msg.exe запускается, но работает медленно: %s.", target.Name, probeDetail))
+	default:
+		reason := probeDetail
+		if strings.Contains(reason, "код 9") {
+			reason = "msg.exe не найден на сервере"
+		}
+		logLine(fmt.Sprintf("%s: ✗ сообщение НЕ дойдёт — msg.exe не запускается: %s.", target.Name, reason))
+		summary.failed++
+		return summary
+	}
+
+	if len(recipients) == 0 {
+		logLine(fmt.Sprintf("%s: пользовательских сеансов нет — сообщение получить некому.", target.Name))
+		summary.ready++
+		return summary
+	}
+	logLine(fmt.Sprintf("%s: ✓ сообщение дойдёт — сеансов %d: %s.", target.Name, len(recipients), strings.Join(recipients, ", ")))
+	if disconnected > 0 {
+		logLine(fmt.Sprintf("%s: из них отключённых сеансов %d — эти пользователи сейчас не за экраном.", target.Name, disconnected))
+	}
+	summary.ready++
+	summary.recipients = len(recipients)
+	return summary
 }
 
 // ScanEmployees ищет сотрудников с открытой 1С на целевых серверах и передаёт

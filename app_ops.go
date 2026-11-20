@@ -94,6 +94,12 @@ func (a *App) Notify(targets []constandstruct.Server, user, password, message st
 	a.stream(func() { ops.Notify(a.ctx, targets, user, password, message, a.logLine) })
 }
 
+// TestNotify — тестовое сообщение: тот же путь, что и рассылка, но ничего не
+// отправляется; журнал показывает, кому оповещение дошло бы.
+func (a *App) TestNotify(targets []constandstruct.Server, user, password, message string) {
+	a.stream(func() { ops.TestNotify(a.ctx, targets, user, password, message, a.logLine) })
+}
+
 // SearchProcesses ищет открытые 1cv7s.exe на целевых серверах.
 func (a *App) SearchProcesses(targets []constandstruct.Server, user, password string) {
 	a.stream(func() { ops.Search(a.ctx, targets, user, password, a.logLine) })

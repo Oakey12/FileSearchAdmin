@@ -126,6 +126,10 @@ export function TestConnection(arg1, arg2, arg3) {
   return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3);
 }
 
+export function TestNotify(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['TestNotify'](arg1, arg2, arg3, arg4);
+}
+
 export function TestFinish(arg1, arg2, arg3) {
   return window['go']['main']['App']['TestFinish'](arg1, arg2, arg3);
 }

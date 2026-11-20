@@ -260,6 +260,13 @@ func RunRemoteTerminate(
 	}, progress)
 }
 
+// RunRemoteNotify рассылает оповещение всем сеансам сервера (msg.exe). dryRun
+// проходит тот же путь, но вместо рассылки сообщает получателей и пробно
+// запускает "msg.exe /?" — ничего не отправляя.
+func RunRemoteNotify(ctx context.Context, serverIP, defaultUser, password, message string, dryRun bool, progress ProgressFunc) ([]string, error) {
+	return runRemote(ctx, serverIP, defaultUser, password, remoteRequest{action: "notify", message: message, dryRun: dryRun}, progress)
+}
+
 // RunRemoteDiagnose проверяет по шагам, можно ли работать с сервером: порт
 // RPC, подключение CIM/DCOM (обычное и с шифрованием), чтение WMI, поиск 1С,
 // пробный запуск команды. На сервере ничего не меняет.

@@ -14,16 +14,16 @@ import (
 func TestNotifyDoesNotLeakPasswordToJournal(t *testing.T) {
 	const secret = "СуперСекретныйПароль123"
 
-	original := runRemoteWithProgress
+	original := runRemoteNotify
 	var gotPassword string
 	var once sync.Mutex
-	runRemoteWithProgress = func(ctx context.Context, ip, user, password, action, arg, payload string, progress remotefunc.ProgressFunc) ([]string, error) {
+	runRemoteNotify = func(ctx context.Context, ip, user, password, message string, dryRun bool, progress remotefunc.ProgressFunc) ([]string, error) {
 		once.Lock()
 		gotPassword = password
 		once.Unlock()
 		return []string{"NOTIFY_OK|ALL|123"}, nil
 	}
-	defer func() { runRemoteWithProgress = original }()
+	defer func() { runRemoteNotify = original }()
 
 	var mu sync.Mutex
 	var lines []string

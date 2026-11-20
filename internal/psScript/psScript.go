@@ -457,6 +457,116 @@ function Invoke-TerminateAction($CimSession, [string]$ServerName, [string[]]$Nam
     }
 }
 
+# --- Тест оповещения -------------------------------------------------------
+# Кто получил бы сообщение и запускается ли msg.exe. Ничего не отправляет:
+# пробный запуск — "msg.exe /?" (только справка).
+# Ответ: NOTIFY_RECIPIENT|сеанс|пользователь|состояние, NOTIFY_WARN|текст,
+# NOTIFY_PROBE|ok/slow/fail|мс|подробности, NOTIFY_DRY|ok.
+
+# Сеансы по quser: пользователь, номер, состояние (Active/Disc, Активно/Диск).
+function Get-QuserSessions([string]$ServerName) {
+    $quserPath = Join-Path $env:SystemRoot "System32\quser.exe"
+    $startInfo = New-Object Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $quserPath
+    $startInfo.Arguments = "/server:" + $ServerName
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $oemEncoding = [Text.Encoding]::GetEncoding([Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+    $startInfo.StandardOutputEncoding = $oemEncoding
+    $startInfo.StandardErrorEncoding = $oemEncoding
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) {
+            throw "не удалось запустить quser.exe"
+        }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(5000)) {
+            $process.Kill()
+            throw "quser не ответил за 5 секунд"
+        }
+        $stdout = $stdoutTask.Result
+        if ($process.ExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($stdout)) {
+            throw ("quser: " + ($stderrTask.Result).Trim())
+        }
+    } finally {
+        $process.Dispose()
+    }
+    $sessions = @()
+    foreach ($line in [regex]::Split($stdout, "\r?\n")) {
+        $tokens = @(($line.Trim() -replace '^>', '') -split '\s+' | Where-Object { $_ -ne "" })
+        for ($index = 1; $index -lt $tokens.Count; $index++) {
+            $sessionId = 0
+            if ([int]::TryParse($tokens[$index], [ref]$sessionId)) {
+                $state = ""
+                if ($index + 1 -lt $tokens.Count) {
+                    $state = $tokens[$index + 1]
+                }
+                $sessions += [PSCustomObject]@{ Id = $sessionId; User = $tokens[0].TrimStart([char]'>'); State = $state }
+                break
+            }
+        }
+    }
+    return $sessions
+}
+
+# Запасной путь, если quser недоступен: владельцы процессов пользовательских
+# сеансов через CIM (с учётными данными из программы). Состояние неизвестно.
+function Get-CimSessions($CimSession) {
+    $serviceAccounts = @("SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE")
+    $byId = @{}
+    $processes = @(Get-CimInstance -CimSession $CimSession -ClassName Win32_Process -Filter "SessionId > 0" -Property Handle,ProcessId,SessionId,Name -OperationTimeoutSec 30)
+    foreach ($process in $processes) {
+        $id = [int]$process.SessionId
+        if ($byId.ContainsKey($id) -or @("csrss.exe", "winlogon.exe", "dwm.exe", "fontdrvhost.exe", "LogonUI.exe") -contains $process.Name) {
+            continue
+        }
+        try {
+            $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwner -OperationTimeoutSec 10
+            if ([uint32]$owner.ReturnValue -eq 0 -and -not [string]::IsNullOrWhiteSpace($owner.User) -and $serviceAccounts -notcontains ([string]$owner.User).ToUpper()) {
+                $byId[$id] = [PSCustomObject]@{ Id = $id; User = ([string]$owner.Domain + "\" + [string]$owner.User).TrimStart([char]'\'); State = "" }
+            }
+        } catch {}
+    }
+    return @($byId.Values | Sort-Object Id)
+}
+
+function Invoke-NotifyDryRun($CimSession, [string]$ServerName, [string]$MsgExe, [string]$SafeMessage) {
+    Write-Output "STAGE|Получатели оповещения"
+    $sessions = @()
+    try {
+        $sessions = @(Get-QuserSessions $ServerName)
+    } catch {
+        Write-Output ("NOTIFY_WARN|список сеансов через quser не получен (" + (Format-Reason $_.Exception.Message) + "), получатели определены по процессам")
+        try {
+            $sessions = @(Get-CimSessions $CimSession)
+        } catch {
+            Write-Output ("NOTIFY_WARN|получателей определить не удалось: " + (Format-Reason $_.Exception.Message))
+        }
+    }
+    foreach ($item in $sessions) {
+        Write-Output ("NOTIFY_RECIPIENT|" + $item.Id + "|" + (Format-Reason $item.User) + "|" + (Format-Reason $item.State))
+    }
+
+    Write-Output "STAGE|Пробный запуск msg.exe"
+    try {
+        $probe = Invoke-RemoteCommandAndWait $CimSession ('"' + $MsgExe + '" /?') "msg.exe" 10000
+        if (-not $probe.Started) {
+            Write-Output ("NOTIFY_PROBE|fail|" + $probe.ElapsedMs + "|" + $probe.ErrorText)
+        } elseif (-not $probe.Finished) {
+            Write-Output ("NOTIFY_PROBE|slow|" + $probe.ElapsedMs + "|msg.exe запустился, но не завершился за 10 с")
+        } else {
+            Write-Output ("NOTIFY_PROBE|ok|" + $probe.ElapsedMs + "|")
+        }
+    } catch {
+        Write-Output ("NOTIFY_PROBE|fail|0|" + (Format-Reason $_.Exception.Message))
+    }
+    Write-Output "NOTIFY_DRY|ok"
+}
+
 # --- Тест подключения ------------------------------------------------------
 # Проверяет по шагам то, без чего не работает ни одна операция, и ничего на
 # сервере не меняет (кроме пробного запуска "cmd.exe /c exit 0"). Ответ —
@@ -650,6 +760,14 @@ try {
 
             # Звёздочка означает все пользовательские сессии сервера.
             $commandLine = '"' + $msgExe + '" * /TIME:86400 "' + $safeMessage + '"'
+
+            if ($DryRun) {
+                # Тест: тот же путь до этого места, дальше — проверка вместо
+                # рассылки. Ничего не отправляется.
+                Invoke-NotifyDryRun $session $ComputerName $msgExe $safeMessage
+                Write-Timing "Тест оповещения" $notifyTimer
+                exit 0
+            }
 
             $result = Invoke-CimMethod -CimSession $session -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $commandLine } -OperationTimeoutSec 15
 
