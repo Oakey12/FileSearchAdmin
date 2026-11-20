@@ -3,7 +3,7 @@ package psscript
 const PsScript = `
 param(
     [Parameter(Mandatory=$true)][string]$ComputerName,
-    [Parameter(Mandatory=$true)][ValidateSet("find","findfast","terminate","notify")][string]$Action,
+    [Parameter(Mandatory=$true)][ValidateSet("find","findfast","terminate","notify","diagnose")][string]$Action,
     [string]$ProcessNames,
     [string]$ProcessIds,
     [string]$Message,
@@ -457,6 +457,127 @@ function Invoke-TerminateAction($CimSession, [string]$ServerName, [string[]]$Nam
     }
 }
 
+# --- Тест подключения ------------------------------------------------------
+# Проверяет по шагам то, без чего не работает ни одна операция, и ничего на
+# сервере не меняет (кроме пробного запуска "cmd.exe /c exit 0"). Ответ —
+# строки DIAG|шаг|ok/fail/skip|мс|подробности; причины разбирает приложение.
+
+function Write-Diag([string]$Step, [string]$Status, [long]$Ms, [string]$Detail) {
+    Write-Output ("DIAG|" + $Step + "|" + $Status + "|" + $Ms + "|" + (Format-Reason $Detail))
+}
+
+# Текст ошибки с кодом HRESULT: по коду приложение отличает «доступ запрещён»
+# от «сервер RPC недоступен» независимо от языка Windows.
+function Get-DiagErrorText($ErrorRecord) {
+    $exception = $ErrorRecord.Exception
+    while ($null -ne $exception.InnerException -and -not ($exception -is [Microsoft.Management.Infrastructure.CimException])) {
+        $exception = $exception.InnerException
+    }
+    $code = $null
+    try {
+        $property = $exception.ErrorData.CimInstanceProperties["error_Code"]
+        if ($null -ne $property -and $null -ne $property.Value) {
+            $code = [uint32]$property.Value
+        }
+    } catch {}
+    if ($null -eq $code) {
+        try { $code = [uint32]([int64]$exception.HResult -band 0xFFFFFFFF) } catch {}
+    }
+    $text = ([string]$exception.Message).Trim()
+    if ($null -ne $code -and $code -ne 0) {
+        $text = $text + " (0x" + $code.ToString("X8") + ")"
+    }
+    return $text
+}
+
+function Invoke-DiagnoseAction($Credential) {
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    Write-Output "STAGE|Проверка порта 135 (RPC)"
+    $portOk = $false
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+        $async = $client.BeginConnect($ComputerName, 135, $null, $null)
+        if ($async.AsyncWaitHandle.WaitOne(3000) -and $client.Connected) {
+            $client.EndConnect($async)
+            $portOk = $true
+        }
+    } catch {
+    } finally {
+        $client.Close()
+    }
+    if ($portOk) {
+        Write-Diag "port" "ok" $timer.ElapsedMilliseconds ""
+    } else {
+        Write-Diag "port" "fail" $timer.ElapsedMilliseconds "нет ответа на порт 135 за 3 с"
+        return
+    }
+
+    $diagSession = $null
+    foreach ($variant in @("dcom", "dcom_privacy")) {
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        Write-Output ("STAGE|Подключение CIM/DCOM" + $(if ($variant -eq "dcom_privacy") { " с шифрованием" } else { "" }))
+        try {
+            if ($variant -eq "dcom") {
+                $option = New-CimSessionOption -Protocol Dcom
+            } else {
+                # -PacketPrivacy сам выбирает набор параметров DCOM; вместе с
+                # -Protocol его указать нельзя.
+                $option = New-CimSessionOption -PacketPrivacy
+            }
+            $diagSession = New-CimSession -ComputerName $ComputerName -Credential $Credential -SessionOption $option -OperationTimeoutSec 20 -ErrorAction Stop
+            Write-Diag $variant "ok" $timer.ElapsedMilliseconds ""
+            break
+        } catch {
+            $errorText = Get-DiagErrorText $_
+            Write-Diag $variant "fail" $timer.ElapsedMilliseconds $errorText
+            # Неверный пароль, недоступный RPC или тайм-аут шифрование не
+            # исправит, а лишняя попытка входа приближает блокировку учётной записи.
+            if ($errorText -match "8007052E|800706BA|80070079|800705B4") {
+                break
+            }
+        }
+    }
+    if ($null -eq $diagSession) {
+        return
+    }
+
+    try {
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        Write-Output "STAGE|Чтение WMI"
+        try {
+            $os = Get-CimInstance -CimSession $diagSession -ClassName Win32_OperatingSystem -Property CSName,Caption -OperationTimeoutSec 20 -ErrorAction Stop
+            Write-Diag "wmi" "ok" $timer.ElapsedMilliseconds ((([string]$os.CSName) + ", " + ([string]$os.Caption)).Trim(", "))
+        } catch {
+            Write-Diag "wmi" "fail" $timer.ElapsedMilliseconds (Get-DiagErrorText $_)
+        }
+
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        Write-Output "STAGE|Поиск процессов 1С"
+        try {
+            $found = @(Get-CimInstance -CimSession $diagSession -ClassName Win32_Process -Filter "Name LIKE '1cv%'" -Property Name -OperationTimeoutSec 30 -ErrorAction Stop)
+            $summary = @($found | Group-Object Name | Sort-Object Name | ForEach-Object { $_.Name + " ×" + $_.Count }) -join ", "
+            Write-Diag "processes" "ok" $timer.ElapsedMilliseconds $summary
+        } catch {
+            Write-Diag "processes" "fail" $timer.ElapsedMilliseconds (Get-DiagErrorText $_)
+        }
+
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        Write-Output "STAGE|Пробный запуск команды"
+        try {
+            $result = Invoke-CimMethod -CimSession $diagSession -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = "cmd.exe /c exit 0" } -OperationTimeoutSec 20 -ErrorAction Stop
+            if ([uint32]$result.ReturnValue -eq 0) {
+                Write-Diag "launch" "ok" $timer.ElapsedMilliseconds ""
+            } else {
+                Write-Diag "launch" "fail" $timer.ElapsedMilliseconds (Get-Win32ProcessCodeText ([uint32]$result.ReturnValue))
+            }
+        } catch {
+            Write-Diag "launch" "fail" $timer.ElapsedMilliseconds (Get-DiagErrorText $_)
+        }
+    } finally {
+        Remove-CimSession -CimSession $diagSession -ErrorAction SilentlyContinue
+    }
+}
+
 try {
     if (-not $CredentialFromStdin) {
         Write-ControlledError "Приложение не передало учётные данные"
@@ -484,6 +605,11 @@ try {
         $passwordBytes = $null
         $plainPassword = $null
         $securePassword = $null
+    }
+
+    if ($Action -eq "diagnose") {
+        Invoke-DiagnoseAction $credential
+        exit 0
     }
 
     $connectionTimer = [Diagnostics.Stopwatch]::StartNew()

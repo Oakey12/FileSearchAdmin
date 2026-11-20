@@ -39,7 +39,7 @@ func TestTerminateDryRunStopsBeforeKilling(t *testing.T) {
 // опознание по PID + времени запуска, поиск других вариантов 1С.
 func TestTerminatePipelineProperties(t *testing.T) {
 	for _, required := range []string{
-		`ValidateSet("find","findfast","terminate","notify")`,
+		`ValidateSet("find","findfast","terminate","notify","diagnose")`,
 		"[switch]$DryRun",
 		"$TaskkillTimeoutMs = 20000",
 		"function Invoke-RemoteCommandAndWait",

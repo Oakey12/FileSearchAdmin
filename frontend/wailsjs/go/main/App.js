@@ -122,6 +122,10 @@ export function ServerList() {
   return window['go']['main']['App']['ServerList']();
 }
 
+export function TestConnection(arg1, arg2, arg3) {
+  return window['go']['main']['App']['TestConnection'](arg1, arg2, arg3);
+}
+
 export function TestFinish(arg1, arg2, arg3) {
   return window['go']['main']['App']['TestFinish'](arg1, arg2, arg3);
 }

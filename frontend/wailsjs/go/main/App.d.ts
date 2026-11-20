@@ -63,6 +63,8 @@ export function SearchProcesses(arg1:Array<constandstruct.Server>,arg2:string,ar
 
 export function ServerList():Promise<Array<constandstruct.Server>>;
 
+export function TestConnection(arg1:Array<constandstruct.Server>,arg2:string,arg3:string):Promise<void>;
+
 export function TestFinish(arg1:Array<constandstruct.Server>,arg2:string,arg3:string):Promise<void>;
 
 export function TestFinishEmployees(arg1:Array<constandstruct.EmployeeProcess>,arg2:string,arg3:string):Promise<void>;

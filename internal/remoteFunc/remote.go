@@ -260,6 +260,13 @@ func RunRemoteTerminate(
 	}, progress)
 }
 
+// RunRemoteDiagnose проверяет по шагам, можно ли работать с сервером: порт
+// RPC, подключение CIM/DCOM (обычное и с шифрованием), чтение WMI, поиск 1С,
+// пробный запуск команды. На сервере ничего не меняет.
+func RunRemoteDiagnose(ctx context.Context, serverIP, defaultUser, password string, progress ProgressFunc) ([]string, error) {
+	return runRemote(ctx, serverIP, defaultUser, password, remoteRequest{action: "diagnose"}, progress)
+}
+
 // RunRemoteScript выполняет пользовательский PowerShell-сценарий через
 // CIM/DCOM и Win32_Process.Create. Учётные данные и текст сценария передаются
 // локальному процессу PowerShell через stdin.

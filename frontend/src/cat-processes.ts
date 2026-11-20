@@ -36,9 +36,15 @@ export class ProcessesPanel {
       const targets = this.creds.requireTargets()
       if (targets) Go.TestFinish(targets, this.creds.login, this.creds.password)
     })
+    const testConnBtn = button('Тест подключения')
+    testConnBtn.title = 'Проверить по шагам вход на серверы (порт RPC, DCOM, WMI, запуск команд) и показать в журнале причину отказа и что исправить. Ничего не меняет.'
+    testConnBtn.addEventListener('click', () => {
+      const targets = this.creds.requireTargets()
+      if (targets) Go.TestConnection(targets, this.creds.login, this.creds.password)
+    })
     const finishAllBtn = button('Завершить 1cv7s у всех', 'danger')
     finishAllBtn.addEventListener('click', () => this.finishAll())
-    proc.append(actions(searchBtn, testFinishBtn, finishAllBtn))
+    proc.append(actions(searchBtn, testConnBtn, testFinishBtn, finishAllBtn))
 
     // сотрудники
     const emp = card('Сотрудники с открытой 1С', 'Просканируйте, отметьте сотрудников и завершите у них 1С.')

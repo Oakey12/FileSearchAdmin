@@ -111,6 +111,13 @@ func (a *App) TestFinish(targets []constandstruct.Server, user, password string)
 	a.stream(func() { ops.TestFinishProcess(a.ctx, targets, user, password, a.logLine) })
 }
 
+// TestConnection — тест подключения к целевым серверам: порт RPC, вход по
+// CIM/DCOM, чтение WMI, поиск 1С, пробный запуск команды. Причины отказов и
+// советы — в журнале. На серверах ничего не меняет.
+func (a *App) TestConnection(targets []constandstruct.Server, user, password string) {
+	a.stream(func() { ops.TestConnection(a.ctx, targets, user, password, a.logLine) })
+}
+
 // TestFinishEmployees — тест завершения 1С у выбранных сотрудников, без
 // завершения процессов.
 func (a *App) TestFinishEmployees(employees []constandstruct.EmployeeProcess, user, password string) {
