@@ -4,6 +4,9 @@
 
 Десктоп-утилита администрирования 1С на Wails v2 (порт 1Cproc). Развёртывание через Nginx — [docs/DEPLOY-NGINX-CICD.md](docs/DEPLOY-NGINX-CICD.md).
 
+**Разработка на новом компьютере:** `git clone` и `.\tools\setup-dev.ps1` —
+подробно в [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
 ## Установлена ли программа на одном компьютере
 
 **Программы → Программы на компьютере**: IP в карточке подключения, название в
